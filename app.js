@@ -1,4 +1,4 @@
-alert("app.js loaded");
+// alert("app.js loaded");
 
 // ===== LocalStorage версия (стабильно для iPhone) =====
 
