@@ -114,3 +114,30 @@ input {
   line-height:1.2;
 }
 
+/* Верхняя панель: вкладки + направление */
+.mode-row{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  margin-bottom:15px;
+}
+
+.tab{
+  padding:8px 14px;
+  border-radius:8px;
+  border:none;
+  background:#e0e0e0;
+  font-weight:600;
+}
+
+.tab.active{
+  background:#1565c0;
+  color:#fff;
+}
+
+.select{
+  margin-left:auto;
+  padding:8px;
+  border-radius:8px;
+}
+
