@@ -1,5 +1,3 @@
-// alert("app.js loaded");
-
 // ===== LocalStorage версия (стабильно для iPhone) =====
 
 const STORAGE_KEY = "ru_tr_words";
