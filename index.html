@@ -14,42 +14,55 @@
   <header>RU-TR Trainer</header>
 
   <div class="container">
-    <h2>Словарь</h2>
+
+    <!-- Верхняя панель -->
     <div class="mode-row">
-  <button id="tabDict" class="tab active">Словарь</button>
-  <button id="tabGame" class="tab">Игра</button>
+      <button id="tabDict" class="tab active">Словарь</button>
+      <button id="tabGame" class="tab">Игра</button>
 
-  <select id="direction" class="select">
-    <option value="ru-tr">RU → TR</option>
-    <option value="tr-ru">TR → RU</option>
-  </select>
-</div>
-
-
-    <input id="ru" placeholder="Русское слово">
-    <input id="tr" placeholder="Türkçe">
-
-    <!-- Флаг плохо запоминается -->
-    <div class="hard-row">
-  <input type="checkbox" id="hard">
-  <label for="hard" class="hard-label">плохо запоминается</label>
-</div>
-
-    <button id="add" style="margin-top:10px;">Добавить</button>
-
-    <!-- Кнопка сброса памяти -->
-    <button id="reset" style="margin-top:10px; background:#e53935;">
-      обнулить память приоритета слов
-    </button>
-
-    <div style="margin-top:15px;">
-      Слов в базе: <b id="count">0</b>
+      <select id="direction" class="select">
+        <option value="ru-tr">RU → TR</option>
+        <option value="tr-ru">TR → RU</option>
+      </select>
     </div>
 
-    <div id="list" style="margin-top:15px;"></div>
+    <!-- ===== Экран словаря ===== -->
+    <div id="screenDict">
+
+      <h2>Словарь</h2>
+
+      <input id="ru" placeholder="Русское слово">
+      <input id="tr" placeholder="Türkçe">
+
+      <div class="hard-row">
+        <input type="checkbox" id="hard">
+        <label for="hard" class="hard-label">плохо запоминается</label>
+      </div>
+
+      <button id="add" style="margin-top:10px;">Добавить</button>
+
+      <button id="reset" style="margin-top:10px; background:#e53935;">
+        обнулить память приоритета слов
+      </button>
+
+      <div style="margin-top:15px;">
+        Слов в базе: <b id="count">0</b>
+      </div>
+
+      <div id="list" style="margin-top:15px;"></div>
+
+    </div>
+
+    <!-- ===== Экран игры ===== -->
+    <div id="screenGame" style="display:none;">
+      <h2>Игра</h2>
+      <div id="gameArea">
+        Здесь будет игра (10 пар)
+      </div>
+    </div>
+
   </div>
 
   <script src="app.js"></script>
 </body>
-
 </html>
