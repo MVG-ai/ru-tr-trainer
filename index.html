@@ -11,14 +11,23 @@
 </head>
 
 <body>
-<div class="container">
-    <h1>RU-TR Trainer</h1>
-    <p>PWA установлено и работает</p>
-    <button onclick="alert('База будет добавлена на следующем шаге')">
-        Проверить
-    </button>
-</div>
-    
-<script src="app.js"></script>
+  <header>RU-TR Trainer</header>
+
+  <div class="container">
+    <h2>Словарь</h2>
+
+    <input id="ru" placeholder="Русское слово">
+    <input id="tr" placeholder="Türkçe">
+    <button id="add">Добавить</button>
+
+    <div style="margin-top:10px;">
+      Слов в базе: <b id="count">0</b>
+    </div>
+
+    <div id="list"></div>
+  </div>
+
+  <script src="app.js"></script>
 </body>
+
 </html>
