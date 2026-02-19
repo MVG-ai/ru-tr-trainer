@@ -140,6 +140,39 @@ function render() {
   });
 }
 
+const HARD_BOOST = 2.5;
+
+function getRoundWords(count = 10) {
+  const words = loadWords();
+  if (words.length <= count) return [...words];
+
+  const pool = [...words];
+  const result = [];
+
+  while (result.length < count && pool.length > 0) {
+
+    // считаем общий вес
+    const totalWeight = pool.reduce((sum, w) => {
+      const effective = w.w * (w.hard ? HARD_BOOST : 1);
+      return sum + effective;
+    }, 0);
+
+    let r = Math.random() * totalWeight;
+
+    for (let i = 0; i < pool.length; i++) {
+      const effective = pool[i].w * (pool[i].hard ? HARD_BOOST : 1);
+      r -= effective;
+      if (r <= 0) {
+        result.push(pool[i]);
+        pool.splice(i, 1); // без повторов
+        break;
+      }
+    }
+  }
+
+  return result;
+}
+
 window.onload = function () {
   const ru = document.getElementById("ru");
   const tr = document.getElementById("tr");
