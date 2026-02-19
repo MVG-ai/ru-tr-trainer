@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>RU-TR Trainer</title>
 
 <link rel="manifest" href="manifest.webmanifest">
@@ -18,13 +18,25 @@
 
     <input id="ru" placeholder="Русское слово">
     <input id="tr" placeholder="Türkçe">
-    <button id="add">Добавить</button>
 
-    <div style="margin-top:10px;">
+    <!-- Флаг плохо запоминается -->
+    <label style="display:flex; align-items:center; gap:8px; margin-top:8px;">
+      <input type="checkbox" id="hard">
+      плохо запоминается
+    </label>
+
+    <button id="add" style="margin-top:10px;">Добавить</button>
+
+    <!-- Кнопка сброса памяти -->
+    <button id="reset" style="margin-top:10px; background:#e53935;">
+      обнулить память приоритета слов
+    </button>
+
+    <div style="margin-top:15px;">
       Слов в базе: <b id="count">0</b>
     </div>
 
-    <div id="list"></div>
+    <div id="list" style="margin-top:15px;"></div>
   </div>
 
   <script src="app.js"></script>
