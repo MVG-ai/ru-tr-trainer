@@ -184,6 +184,10 @@ window.onload = function () {
   // ожидаем кнопку в HTML: <button id="reset">обнулить память приоритета слов</button>
   const reset = document.getElementById("reset");
 
+  const testRound = document.getElementById("testRound");
+if (testRound) testRound.onclick = () => console.log(getRoundWords(10).map(w => ({ ru: w.ru, tr: w.tr, hard: w.hard, w: w.w })));
+
+
   add.onclick = () => {
     addWord(ru.value, tr.value, hard ? hard.checked : false);
     ru.value = "";
