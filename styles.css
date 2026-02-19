@@ -75,3 +75,22 @@ input {
   background: #d32f2f;
   color: white;
 }
+
+/* FIX: строка словаря не должна разъезжаться на мобиле */
+#list .row{
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: nowrap;
+}
+
+#list .row-text{
+  flex: 1 1 auto;
+  min-width: 0;
+  word-break: break-word;
+}
+
+#list .btn-small{
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
