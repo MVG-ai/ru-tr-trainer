@@ -94,3 +94,23 @@ input {
   flex: 0 0 auto;
   white-space: nowrap;
 }
+
+/* FIX: чекбокс "плохо запоминается" */
+.hard-row{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  margin-top:8px;
+}
+
+.hard-row input[type="checkbox"]{
+  width:22px;
+  height:22px;
+  flex:0 0 auto;
+}
+
+.hard-label{
+  margin:0;
+  line-height:1.2;
+}
+
