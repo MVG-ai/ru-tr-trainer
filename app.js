@@ -2,40 +2,64 @@
 
 const STORAGE_KEY = "ru_tr_words";
 
+// Параметры весов (зафиксировали)
+const HARD_BOOST = 2.5;
+const W_MIN = 1;
+const W_MAX = 10;
+const BAD_STEP = 1.0;
+const OK_STEP = 0.25;
+
 // Нормализация для сравнения (Дом = дом)
 function norm(s) {
-  return (s ?? "")
-    .toString()
-    .trim()
-    .toLowerCase()
-    .normalize("NFKC");
+  try {
+    return (s ?? "")
+      .toString()
+      .trim()
+      .toLowerCase()
+      .normalize("NFKC");
+  } catch {
+    // на случай если normalize по какой-то причине недоступен
+    return (s ?? "").toString().trim().toLowerCase();
+  }
 }
 
 // Мягкая миграция старых записей в новый формат
 function ensureWordShape(w) {
+  const id = (w && w.id != null) ? w.id : (Date.now() + Math.floor(Math.random() * 1000));
+  const ru = (w && w.ru != null) ? w.ru : "";
+  const tr = (w && w.tr != null) ? w.tr : "";
+
   return {
-    id: w.id ?? Date.now() + Math.floor(Math.random() * 1000),
-    ru: (w.ru ?? "").toString(),
-    tr: (w.tr ?? "").toString(),
-    hard: !!w.hard,          // "плохо запоминается"
-    w: typeof w.w === "number" ? w.w : 1,   // вес/приоритет
-    ok: typeof w.ok === "number" ? w.ok : 0,
-    bad: typeof w.bad === "number" ? w.bad : 0,
+    id,
+    ru: ru.toString(),
+    tr: tr.toString(),
+    hard: !!(w && w.hard),
+    w: (w && typeof w.w === "number") ? w.w : 1,
+    ok: (w && typeof w.ok === "number") ? w.ok : 0,
+    bad: (w && typeof w.bad === "number") ? w.bad : 0,
   };
 }
 
 function loadWords() {
   const data = localStorage.getItem(STORAGE_KEY);
-  let arr = data ? JSON.parse(data) : [];
-  if (!Array.isArray(arr)) arr = [];
+  if (!data) return [];
 
-  // миграция/нормализация структуры
+  let arr;
+  try {
+    arr = JSON.parse(data);
+  } catch (e) {
+    // Если JSON битый — очищаем только хранилище словаря (чтобы приложение ожило)
+    console.warn("Bad JSON in storage, resetting words storage:", e);
+    localStorage.removeItem(STORAGE_KEY);
+    return [];
+  }
+
+  if (!Array.isArray(arr)) return [];
+
   const migrated = arr.map(ensureWordShape);
 
-  // Если миграция реально что-то поменяла — сохраним обратно (чтобы дальше всё было однородно)
-  // Простая проверка: есть ли у кого-то undefined поля hard/w/ok/bad
-  const needsSave = migrated.some(w => w.hard === undefined || w.w === undefined || w.ok === undefined || w.bad === undefined);
-  if (needsSave) saveWords(migrated);
+  // Сохраняем миграцию обратно всегда (это дешевле, чем гадать)
+  saveWords(migrated);
 
   return migrated;
 }
@@ -45,8 +69,8 @@ function saveWords(words) {
 }
 
 function addWord(ru, tr, hardFlag) {
-  ru = ru.trim();
-  tr = tr.trim();
+  ru = (ru ?? "").toString().trim();
+  tr = (tr ?? "").toString().trim();
   if (!ru || !tr) return;
 
   const nru = norm(ru);
@@ -103,9 +127,42 @@ function resetPriorityMemory() {
   render();
 }
 
+// Выбор 10 слов с учётом веса и hardBoost, без повторов
+function getRoundWords(count = 10) {
+  const words = loadWords();
+  if (words.length <= count) return [...words];
+
+  const pool = [...words];
+  const result = [];
+
+  while (result.length < count && pool.length > 0) {
+    const totalWeight = pool.reduce((sum, w) => {
+      const effective = (w.w || 1) * (w.hard ? HARD_BOOST : 1);
+      return sum + effective;
+    }, 0);
+
+    let r = Math.random() * totalWeight;
+
+    for (let i = 0; i < pool.length; i++) {
+      const effective = (pool[i].w || 1) * (pool[i].hard ? HARD_BOOST : 1);
+      r -= effective;
+      if (r <= 0) {
+        result.push(pool[i]);
+        pool.splice(i, 1);
+        break;
+      }
+    }
+  }
+
+  return result;
+}
+
 function render() {
   const list = document.getElementById("list");
   const count = document.getElementById("count");
+
+  // Если экран словаря сейчас не в DOM / переименован — просто не падаем
+  if (!list || !count) return;
 
   const words = loadWords();
   list.innerHTML = "";
@@ -138,59 +195,55 @@ function render() {
   });
 }
 
-const HARD_BOOST = 2.5;
+// Переключение экранов Словарь/Игра (если ты уже добавил screenDict/screenGame)
+function setActiveTab(tab) {
+  const screenDict = document.getElementById("screenDict");
+  const screenGame = document.getElementById("screenGame");
+  const tabDict = document.getElementById("tabDict");
+  const tabGame = document.getElementById("tabGame");
 
-function getRoundWords(count = 10) {
-  const words = loadWords();
-  if (words.length <= count) return [...words];
-
-  const pool = [...words];
-  const result = [];
-
-  while (result.length < count && pool.length > 0) {
-
-    // считаем общий вес
-    const totalWeight = pool.reduce((sum, w) => {
-      const effective = w.w * (w.hard ? HARD_BOOST : 1);
-      return sum + effective;
-    }, 0);
-
-    let r = Math.random() * totalWeight;
-
-    for (let i = 0; i < pool.length; i++) {
-      const effective = pool[i].w * (pool[i].hard ? HARD_BOOST : 1);
-      r -= effective;
-      if (r <= 0) {
-        result.push(pool[i]);
-        pool.splice(i, 1); // без повторов
-        break;
-      }
-    }
+  if (screenDict && screenGame) {
+    const isDict = tab === "dict";
+    screenDict.style.display = isDict ? "" : "none";
+    screenGame.style.display = isDict ? "none" : "";
   }
 
-  return result;
+  if (tabDict && tabGame) {
+    tabDict.classList.toggle("active", tab === "dict");
+    tabGame.classList.toggle("active", tab === "game");
+  }
+
+  // Когда возвращаемся на словарь — перерисуем
+  if (tab === "dict") render();
 }
 
 window.onload = function () {
   const ru = document.getElementById("ru");
   const tr = document.getElementById("tr");
   const add = document.getElementById("add");
-
-  // ожидаем чекбокс в HTML: <input type="checkbox" id="hard">
   const hard = document.getElementById("hard");
-
-  // ожидаем кнопку в HTML: <button id="reset">обнулить память приоритета слов</button>
   const reset = document.getElementById("reset");
 
-  add.onclick = () => {
-    addWord(ru.value, tr.value, hard ? hard.checked : false);
-    ru.value = "";
-    tr.value = "";
-    if (hard) hard.checked = false;
-    ru.focus();
-  };
+  // Вкладки (если они есть)
+  const tabDict = document.getElementById("tabDict");
+  const tabGame = document.getElementById("tabGame");
+
+  if (tabDict) tabDict.onclick = () => setActiveTab("dict");
+  if (tabGame) tabGame.onclick = () => setActiveTab("game");
+
+  if (add && ru && tr) {
+    add.onclick = () => {
+      addWord(ru.value, tr.value, hard ? hard.checked : false);
+      ru.value = "";
+      tr.value = "";
+      if (hard) hard.checked = false;
+      ru.focus();
+    };
+  }
 
   if (reset) reset.onclick = resetPriorityMemory;
 
+  // По умолчанию показываем словарь (если есть экраны)
+  setActiveTab("dict");
   render();
 };
