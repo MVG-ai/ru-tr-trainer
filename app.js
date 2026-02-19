@@ -1,4 +1,5 @@
 // RU-TR Trainer — база слов (IndexedDB) + список слов (минимальный MVP)
+alert("app.js loaded");
 
 const DB_NAME = "ru_tr_trainer";
 const DB_VERSION = 1;
