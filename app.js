@@ -1,6 +1,8 @@
 // ===== LocalStorage версия (стабильно для iPhone) =====
 
 const STORAGE_KEY = "ru_tr_words";
+const DIRECTION_KEY = "ru_tr_direction";
+
 
 // Параметры весов (зафиксировали)
 const HARD_BOOST = 2.5;
@@ -217,6 +219,15 @@ function setActiveTab(tab) {
   if (tab === "dict") render();
 }
 
+function loadDirection() {
+  return localStorage.getItem(DIRECTION_KEY) || "ru-tr";
+}
+
+function saveDirection(val) {
+  localStorage.setItem(DIRECTION_KEY, val);
+}
+
+
 window.onload = function () {
   const ru = document.getElementById("ru");
   const tr = document.getElementById("tr");
@@ -224,6 +235,13 @@ window.onload = function () {
   const hard = document.getElementById("hard");
   const reset = document.getElementById("reset");
 
+const direction = document.getElementById("direction");
+if (direction) {
+  direction.value = loadDirection();
+  direction.onchange = () => saveDirection(direction.value);
+}
+
+  
   // Вкладки (если они есть)
   const tabDict = document.getElementById("tabDict");
   const tabGame = document.getElementById("tabGame");
