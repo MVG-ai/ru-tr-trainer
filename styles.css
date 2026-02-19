@@ -43,3 +43,35 @@ button {
     color: #1565c0;
     font-weight: bold;
 }
+
+input {
+  width: 100%;
+  padding: 12px;
+  margin: 6px 0;
+  font-size: 16px;
+  border-radius: 10px;
+  border: 1px solid #ccc;
+}
+
+.form { margin-bottom: 12px; }
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  margin: 8px 0;
+}
+
+.row-text { font-weight: 600; }
+
+.btn-small {
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: none;
+  background: #d32f2f;
+  color: white;
+}
