@@ -4,76 +4,162 @@ alert("app.js loaded");
 
 const STORAGE_KEY = "ru_tr_words";
 
+// Нормализация для сравнения (Дом = дом)
+function norm(s) {
+  return (s ?? "")
+    .toString()
+    .trim()
+    .toLowerCase()
+    .normalize("NFKC");
+}
+
+// Мягкая миграция старых записей в новый формат
+function ensureWordShape(w) {
+  return {
+    id: w.id ?? Date.now() + Math.floor(Math.random() * 1000),
+    ru: (w.ru ?? "").toString(),
+    tr: (w.tr ?? "").toString(),
+    hard: !!w.hard,          // "плохо запоминается"
+    w: typeof w.w === "number" ? w.w : 1,   // вес/приоритет
+    ok: typeof w.ok === "number" ? w.ok : 0,
+    bad: typeof w.bad === "number" ? w.bad : 0,
+  };
+}
+
 function loadWords() {
-    const data = localStorage.getItem(STORAGE_KEY);
-    return data ? JSON.parse(data) : [];
+  const data = localStorage.getItem(STORAGE_KEY);
+  let arr = data ? JSON.parse(data) : [];
+  if (!Array.isArray(arr)) arr = [];
+
+  // миграция/нормализация структуры
+  const migrated = arr.map(ensureWordShape);
+
+  // Если миграция реально что-то поменяла — сохраним обратно (чтобы дальше всё было однородно)
+  // Простая проверка: есть ли у кого-то undefined поля hard/w/ok/bad
+  const needsSave = migrated.some(w => w.hard === undefined || w.w === undefined || w.ok === undefined || w.bad === undefined);
+  if (needsSave) saveWords(migrated);
+
+  return migrated;
 }
 
 function saveWords(words) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(words));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(words));
 }
 
-function addWord(ru, tr) {
-    ru = ru.trim();
-    tr = tr.trim();
-    if (!ru || !tr) return;
+function addWord(ru, tr, hardFlag) {
+  ru = ru.trim();
+  tr = tr.trim();
+  if (!ru || !tr) return;
 
-    const words = loadWords();
-    words.push({
-        id: Date.now(),
-        ru,
-        tr
-    });
+  const nru = norm(ru);
+  const ntr = norm(tr);
 
-    saveWords(words);
-    render();
+  const words = loadWords();
+
+  // дедуп: не добавляем, если уже есть точно такая пара (case-insensitive)
+  const exists = words.some(w => norm(w.ru) === nru && norm(w.tr) === ntr);
+  if (exists) {
+    alert("Такая пара уже есть (Дом=дом).");
+    return;
+  }
+
+  words.push({
+    id: Date.now(),
+    ru,
+    tr,
+    hard: !!hardFlag,
+    w: 1,
+    ok: 0,
+    bad: 0
+  });
+
+  saveWords(words);
+  render();
 }
 
 function deleteWord(id) {
-    let words = loadWords();
-    words = words.filter(w => w.id !== id);
-    saveWords(words);
-    render();
+  let words = loadWords();
+  words = words.filter(w => w.id !== id);
+  saveWords(words);
+  render();
+}
+
+function toggleHard(id) {
+  const words = loadWords();
+  const w = words.find(x => x.id === id);
+  if (!w) return;
+  w.hard = !w.hard;
+  saveWords(words);
+  render();
+}
+
+function resetPriorityMemory() {
+  const words = loadWords();
+  words.forEach(w => {
+    w.w = 1;
+    w.ok = 0;
+    w.bad = 0;
+  });
+  saveWords(words);
+  alert("Память приоритета слов обнулена.");
+  render();
 }
 
 function render() {
-    const list = document.getElementById("list");
-    const count = document.getElementById("count");
+  const list = document.getElementById("list");
+  const count = document.getElementById("count");
 
-    const words = loadWords();
-    list.innerHTML = "";
-    count.textContent = words.length;
+  const words = loadWords();
+  list.innerHTML = "";
+  count.textContent = words.length;
 
-    words.forEach(w => {
-        const row = document.createElement("div");
-        row.className = "row";
+  words.forEach(w => {
+    const row = document.createElement("div");
+    row.className = "row";
 
-        const text = document.createElement("div");
-        text.className = "row-text";
-        text.textContent = w.ru + " — " + w.tr;
+    const text = document.createElement("div");
+    text.className = "row-text";
 
-        const btn = document.createElement("button");
-        btn.className = "btn-small";
-        btn.textContent = "Удалить";
-        btn.onclick = () => deleteWord(w.id);
+    const hardMark = w.hard ? " ★" : "";
+    text.textContent = `${w.ru} — ${w.tr}${hardMark}`;
 
-        row.appendChild(text);
-        row.appendChild(btn);
-        list.appendChild(row);
-    });
+    const hardBtn = document.createElement("button");
+    hardBtn.className = "btn-small";
+    hardBtn.textContent = w.hard ? "Не сложно" : "Плохо запоминается";
+    hardBtn.onclick = () => toggleHard(w.id);
+
+    const delBtn = document.createElement("button");
+    delBtn.className = "btn-small";
+    delBtn.textContent = "Удалить";
+    delBtn.onclick = () => deleteWord(w.id);
+
+    row.appendChild(text);
+    row.appendChild(hardBtn);
+    row.appendChild(delBtn);
+    list.appendChild(row);
+  });
 }
 
 window.onload = function () {
-    const ru = document.getElementById("ru");
-    const tr = document.getElementById("tr");
-    const add = document.getElementById("add");
+  const ru = document.getElementById("ru");
+  const tr = document.getElementById("tr");
+  const add = document.getElementById("add");
 
-    add.onclick = () => {
-        addWord(ru.value, tr.value);
-        ru.value = "";
-        tr.value = "";
-        ru.focus();
-    };
+  // ожидаем чекбокс в HTML: <input type="checkbox" id="hard">
+  const hard = document.getElementById("hard");
 
-    render();
+  // ожидаем кнопку в HTML: <button id="reset">обнулить память приоритета слов</button>
+  const reset = document.getElementById("reset");
+
+  add.onclick = () => {
+    addWord(ru.value, tr.value, hard ? hard.checked : false);
+    ru.value = "";
+    tr.value = "";
+    if (hard) hard.checked = false;
+    ru.focus();
+  };
+
+  if (reset) reset.onclick = resetPriorityMemory;
+
+  render();
 };
