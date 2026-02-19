@@ -2,7 +2,10 @@ const CACHE_NAME = "ru-tr-trainer-v2";
 const ASSETS = [
   "./",
   "./index.html",
+  "./styles.css",
   "./manifest.webmanifest",
+  "./icon-192.png",
+  "./icon-512.png",
   "./sw.js"
 ];
 
