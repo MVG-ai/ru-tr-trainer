@@ -201,6 +201,13 @@ function render() {
   });
 }
 
+// Обновление одного слова в storage (по id)
+function updateWordInStorage(updatedWord) {
+  const all = loadWords();
+  const next = all.map(w => (w.id === updatedWord.id ? updatedWord : w));
+  saveWords(next);
+}
+
 function renderGame() {
   const gameArea = document.getElementById("gameArea");
   if (!gameArea) return;
@@ -220,6 +227,10 @@ function renderGame() {
   const rightCol = document.createElement("div");
   rightCol.style.flex = "1";
 
+  // Быстрый доступ к словам по id (это те 10, что в раунде)
+  const wordsMap = {};
+  words.forEach(w => { wordsMap[w.id] = w; });
+
   const leftItems = [];
   const rightItems = [];
 
@@ -238,36 +249,126 @@ function renderGame() {
   let selectedLeft = null;
   let selectedRight = null;
 
-  function clearSelection(side) {
-    const col = (side === "left") ? leftCol : rightCol;
-    Array.from(col.children).forEach(el => { el.style.background = "#f0f0f0"; });
+  function setCardBaseStyle(el) {
+    el.style.background = "#f0f0f0";
+  }
+
+  function setCardSelectedStyle(el) {
+    el.style.background = "#bbdefb";
+  }
+
+  function setCardErrorStyle(el) {
+    el.style.background = "#ffcdd2";
+  }
+
+  function updateWordStats(word, isCorrect) {
+    if (!word) return;
+
+    if (isCorrect) {
+      word.ok += 1;
+      // ВАЖНО: уменьшаем вес только если он уже увеличен
+      if (word.w > W_MIN) {
+        word.w = Math.max(W_MIN, word.w - OK_STEP);
+      }
+    } else {
+      word.bad += 1;
+      word.w = Math.min(W_MAX, word.w + BAD_STEP);
+    }
+
+    updateWordInStorage(word);
+  }
+
+  function resetSelection() {
+    selectedLeft = null;
+    selectedRight = null;
+  }
+
+  function checkMatchIfReady() {
+    if (!selectedLeft || !selectedRight) return;
+
+    const isCorrect = selectedLeft.id === selectedRight.id;
+
+    if (isCorrect) {
+      const word = wordsMap[selectedLeft.id];
+      updateWordStats(word, true);
+
+      // удаляем с экрана обе карточки
+      selectedLeft.el.remove();
+      selectedRight.el.remove();
+
+      resetSelection();
+
+      // если всё решено — автоматически грузим следующий раунд
+      // (можно отключить, если пока не надо)
+      const leftRemain = leftCol.querySelectorAll("div[data-side='left']").length;
+      const rightRemain = rightCol.querySelectorAll("div[data-side='right']").length;
+      if (leftRemain === 0 && rightRemain === 0) {
+        setTimeout(() => renderGame(), 300);
+      }
+
+      return;
+    }
+
+    // Ошибка: считаем ошибку по выбранному ЛЕВОМУ слову
+    const word = wordsMap[selectedLeft.id];
+    updateWordStats(word, false);
+
+    setCardErrorStyle(selectedLeft.el);
+    setCardErrorStyle(selectedRight.el);
+
+    setTimeout(function () {
+      // сбрасываем стиль обратно, если элементы ещё существуют
+      if (selectedLeft && selectedLeft.el && document.body.contains(selectedLeft.el)) {
+        setCardBaseStyle(selectedLeft.el);
+      }
+      if (selectedRight && selectedRight.el && document.body.contains(selectedRight.el)) {
+        setCardBaseStyle(selectedRight.el);
+      }
+      resetSelection();
+    }, 500);
   }
 
   function createCard(item, side) {
     const div = document.createElement("div");
     div.textContent = item.text;
+    div.dataset.side = side;
+    div.dataset.id = String(item.id);
+
     div.style.padding = "8px";
     div.style.marginBottom = "6px";
     div.style.background = "#f0f0f0";
     div.style.borderRadius = "8px";
     div.style.cursor = "pointer";
+    div.style.userSelect = "none";
 
     div.onclick = function () {
+      // сбрасываем подсветку в своей колонке (чтобы выделение было одно)
+      const col = (side === "left") ? leftCol : rightCol;
+      Array.from(col.children).forEach(function (el) {
+        if (el && el.style) setCardBaseStyle(el);
+      });
+
+      setCardSelectedStyle(div);
+
       if (side === "left") {
-        clearSelection("left");
         selectedLeft = { id: item.id, el: div };
       } else {
-        clearSelection("right");
         selectedRight = { id: item.id, el: div };
       }
-      div.style.background = "#bbdefb";
+
+      checkMatchIfReady();
     };
 
     return div;
   }
 
-  leftItems.forEach(item => { leftCol.appendChild(createCard(item, "left")); });
-  rightItems.forEach(item => { rightCol.appendChild(createCard(item, "right")); });
+  leftItems.forEach(function (item) {
+    leftCol.appendChild(createCard(item, "left"));
+  });
+
+  rightItems.forEach(function (item) {
+    rightCol.appendChild(createCard(item, "right"));
+  });
 
   container.appendChild(leftCol);
   container.appendChild(rightCol);
@@ -309,6 +410,11 @@ window.onload = function () {
     direction.value = loadDirection();
     direction.onchange = function () {
       saveDirection(direction.value);
+      // если сейчас на экране игра — перерендерим
+      const screenGame = document.getElementById("screenGame");
+      if (screenGame && screenGame.style.display !== "none") {
+        renderGame();
+      }
     };
   }
 
