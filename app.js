@@ -222,61 +222,58 @@ function renderGame() {
   const rightCol = document.createElement("div");
   rightCol.style.flex = "1";
 
-  // формируем массивы
   const leftItems = [];
   const rightItems = [];
 
   words.forEach(w => {
     if (direction === "ru-tr") {
-      leftItems.push(w.ru);
-      rightItems.push(w.tr);
+      leftItems.push({ text: w.ru, id: w.id });
+      rightItems.push({ text: w.tr, id: w.id });
     } else {
-      leftItems.push(w.tr);
-      rightItems.push(w.ru);
+      leftItems.push({ text: w.tr, id: w.id });
+      rightItems.push({ text: w.ru, id: w.id });
     }
   });
 
-  // перемешиваем правую колонку
   rightItems.sort(() => Math.random() - 0.5);
 
-  leftItems.forEach(text => {
+  let selectedLeft = null;
+  let selectedRight = null;
+
+  function createCard(item, side) {
     const div = document.createElement("div");
-    div.textContent = text;
+    div.textContent = item.text;
     div.style.padding = "8px";
     div.style.marginBottom = "6px";
     div.style.background = "#f0f0f0";
     div.style.borderRadius = "8px";
-    leftCol.appendChild(div);
+    div.style.cursor = "pointer";
+
+    div.onclick = function () {
+      if (side === "left") {
+        selectedLeft = { id: item.id, el: div };
+      } else {
+        selectedRight = { id: item.id, el: div };
+      }
+
+      div.style.background = "#bbdefb";
+    };
+
+    return div;
+  }
+
+  leftItems.forEach(item => {
+    leftCol.appendChild(createCard(item, "left"));
   });
 
-  rightItems.forEach(text => {
-    const div = document.createElement("div");
-    div.textContent = text;
-    div.style.padding = "8px";
-    div.style.marginBottom = "6px";
-    div.style.background = "#f0f0f0";
-    div.style.borderRadius = "8px";
-    rightCol.appendChild(div);
+  rightItems.forEach(item => {
+    rightCol.appendChild(createCard(item, "right"));
   });
 
   container.appendChild(leftCol);
   container.appendChild(rightCol);
   gameArea.appendChild(container);
 }
-
-// Переключение экранов Словарь/Игра
-function setActiveTab(tab) {
-  const screenDict = document.getElementById("screenDict");
-  const screenGame = document.getElementById("screenGame");
-  const tabDict = document.getElementById("tabDict");
-  const tabGame = document.getElementById("tabGame");
-
-  if (screenDict && screenGame) {
-    const isDict = tab === "dict";
-    screenDict.style.display = isDict ? "" : "none";
-    screenGame.style.display = isDict ? "none" : "";
-  }
-
   if (tabDict && tabGame) {
     tabDict.classList.toggle("active", tab === "dict");
     tabGame.classList.toggle("active", tab === "game");
