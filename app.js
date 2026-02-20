@@ -135,7 +135,12 @@ function resetPriorityMemory() {
 // Выбор N слов с учётом веса и hardBoost, без повторов
 function getRoundWords(count = 10) {
   const words = loadWords();
-  if (words.length <= count) return [...words];
+
+  // ✅ ВАЖНО: даже если слов <= count, возвращаем их ПЕРЕМЕШАННЫМИ
+  if (words.length <= count) {
+    const shuffled = [...words].sort(function () { return Math.random() - 0.5; });
+    return shuffled;
+  }
 
   const pool = [...words];
   const result = [];
@@ -244,22 +249,15 @@ function renderGame() {
     }
   });
 
+  // Правая перемешивается (как и раньше)
   rightItems.sort(function () { return Math.random() - 0.5; });
 
   let selectedLeft = null;
   let selectedRight = null;
 
-  function setCardBaseStyle(el) {
-    el.style.background = "#f0f0f0";
-  }
-
-  function setCardSelectedStyle(el) {
-    el.style.background = "#bbdefb";
-  }
-
-  function setCardErrorStyle(el) {
-    el.style.background = "#ffcdd2";
-  }
+  function setCardBaseStyle(el) { el.style.background = "#f0f0f0"; }
+  function setCardSelectedStyle(el) { el.style.background = "#bbdefb"; }
+  function setCardErrorStyle(el) { el.style.background = "#ffcdd2"; }
 
   function updateWordStats(word, isCorrect) {
     if (!word) return;
@@ -292,23 +290,19 @@ function renderGame() {
       const word = wordsMap[selectedLeft.id];
       updateWordStats(word, true);
 
-      // удаляем с экрана обе карточки
       selectedLeft.el.remove();
       selectedRight.el.remove();
 
       resetSelection();
 
-      // если всё решено — автоматически грузим следующий раунд
       const leftRemain = leftCol.querySelectorAll("div[data-side='left']").length;
       const rightRemain = rightCol.querySelectorAll("div[data-side='right']").length;
       if (leftRemain === 0 && rightRemain === 0) {
         setTimeout(function () { renderGame(); }, 300);
       }
-
       return;
     }
 
-    // Ошибка: считаем ошибку по выбранному ЛЕВОМУ слову
     const word = wordsMap[selectedLeft.id];
     updateWordStats(word, false);
 
@@ -340,7 +334,6 @@ function renderGame() {
     div.style.userSelect = "none";
 
     div.onclick = function () {
-      // сбрасываем подсветку в своей колонке (чтобы выделение было одно)
       const col = (side === "left") ? leftCol : rightCol;
       Array.from(col.children).forEach(function (el) {
         if (el && el.style) setCardBaseStyle(el);
@@ -408,7 +401,6 @@ window.onload = function () {
     direction.value = loadDirection();
     direction.onchange = function () {
       saveDirection(direction.value);
-      // если сейчас на экране игра — перерендерим
       const screenGame = document.getElementById("screenGame");
       if (screenGame && screenGame.style.display !== "none") {
         renderGame();
@@ -438,7 +430,12 @@ window.onload = function () {
 
   // ===== Кнопка "Следующий раунд" =====
   const nextRound = document.getElementById("nextRound");
-  if (nextRound) nextRound.onclick = function () { renderGame(); };
+  if (nextRound) {
+    nextRound.onclick = function (e) {
+      if (e && e.preventDefault) e.preventDefault();
+      renderGame();
+    };
+  }
 
   // По умолчанию словарь
   setActiveTab("dict");
