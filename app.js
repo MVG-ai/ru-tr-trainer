@@ -212,19 +212,56 @@ function renderGame() {
 
   gameArea.innerHTML = "";
 
+  const container = document.createElement("div");
+  container.style.display = "flex";
+  container.style.gap = "10px";
+
+  const leftCol = document.createElement("div");
+  leftCol.style.flex = "1";
+
+  const rightCol = document.createElement("div");
+  rightCol.style.flex = "1";
+
+  // формируем массивы
+  const leftItems = [];
+  const rightItems = [];
+
   words.forEach(w => {
-    const row = document.createElement("div");
-    row.style.padding = "8px";
-    row.style.borderBottom = "1px solid #ddd";
-
     if (direction === "ru-tr") {
-      row.textContent = `${w.ru} — ${w.tr}`;
+      leftItems.push(w.ru);
+      rightItems.push(w.tr);
     } else {
-      row.textContent = `${w.tr} — ${w.ru}`;
+      leftItems.push(w.tr);
+      rightItems.push(w.ru);
     }
-
-    gameArea.appendChild(row);
   });
+
+  // перемешиваем правую колонку
+  rightItems.sort(() => Math.random() - 0.5);
+
+  leftItems.forEach(text => {
+    const div = document.createElement("div");
+    div.textContent = text;
+    div.style.padding = "8px";
+    div.style.marginBottom = "6px";
+    div.style.background = "#f0f0f0";
+    div.style.borderRadius = "8px";
+    leftCol.appendChild(div);
+  });
+
+  rightItems.forEach(text => {
+    const div = document.createElement("div");
+    div.textContent = text;
+    div.style.padding = "8px";
+    div.style.marginBottom = "6px";
+    div.style.background = "#f0f0f0";
+    div.style.borderRadius = "8px";
+    rightCol.appendChild(div);
+  });
+
+  container.appendChild(leftCol);
+  container.appendChild(rightCol);
+  gameArea.appendChild(container);
 }
 
 // Переключение экранов Словарь/Игра
