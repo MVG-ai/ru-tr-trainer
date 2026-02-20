@@ -299,11 +299,10 @@ function renderGame() {
       resetSelection();
 
       // если всё решено — автоматически грузим следующий раунд
-      // (можно отключить, если пока не надо)
       const leftRemain = leftCol.querySelectorAll("div[data-side='left']").length;
       const rightRemain = rightCol.querySelectorAll("div[data-side='right']").length;
       if (leftRemain === 0 && rightRemain === 0) {
-        setTimeout(() => renderGame(), 300);
+        setTimeout(function () { renderGame(); }, 300);
       }
 
       return;
@@ -317,7 +316,6 @@ function renderGame() {
     setCardErrorStyle(selectedRight.el);
 
     setTimeout(function () {
-      // сбрасываем стиль обратно, если элементы ещё существуют
       if (selectedLeft && selectedLeft.el && document.body.contains(selectedLeft.el)) {
         setCardBaseStyle(selectedLeft.el);
       }
@@ -437,6 +435,10 @@ window.onload = function () {
 
   // Сброс памяти приоритета
   if (reset) reset.onclick = resetPriorityMemory;
+
+  // ===== Кнопка "Следующий раунд" =====
+  const nextRound = document.getElementById("nextRound");
+  if (nextRound) nextRound.onclick = function () { renderGame(); };
 
   // По умолчанию словарь
   setActiveTab("dict");
