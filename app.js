@@ -193,6 +193,182 @@ function exportWordsCsv() {
   setTimeout(() => URL.revokeObjectURL(url), 1500);
 }
 
+// ===== CSV IMPORT (Ru,Tr,Hard) =====
+// поддерживаем разделитель "," или ";" (часто в Excel по локали)
+function detectDelimiter(headerLine) {
+  const commas = (headerLine.match(/,/g) || []).length;
+  const semis = (headerLine.match(/;/g) || []).length;
+  return semis > commas ? ";" : ",";
+}
+
+// парсер CSV с кавычками, возвращает массив строк (массив массивов)
+function parseCSV(text, delimiter) {
+  const rows = [];
+  let row = [];
+  let cur = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    const next = text[i + 1];
+
+    if (inQuotes) {
+      if (ch === '"' && next === '"') {
+        cur += '"';
+        i++;
+      } else if (ch === '"') {
+        inQuotes = false;
+      } else {
+        cur += ch;
+      }
+    } else {
+      if (ch === '"') {
+        inQuotes = true;
+      } else if (ch === delimiter) {
+        row.push(cur);
+        cur = "";
+      } else if (ch === "\n") {
+        row.push(cur);
+        rows.push(row);
+        row = [];
+        cur = "";
+      } else if (ch === "\r") {
+        // ignore
+      } else {
+        cur += ch;
+      }
+    }
+  }
+  row.push(cur);
+  rows.push(row);
+
+  // убираем пустые хвосты
+  return rows.filter(r => r.some(cell => (cell ?? "").toString().trim() !== ""));
+}
+
+function normalizeHeader(h) {
+  return (h ?? "").toString().trim().toLowerCase();
+}
+
+function hardToBool(v) {
+  const s = (v ?? "").toString().trim();
+  if (!s) return false;           // пусто => 0
+  return s === "1";               // только 1 => true, остальное => false
+}
+
+function importWordsFromCsvText(csvText, mode /* "merge" | "replace" */) {
+  const text = (csvText ?? "").toString().replace(/^\uFEFF/, ""); // убираем BOM если есть
+  const firstLine = text.split(/\r?\n/).find(l => l.trim() !== "") ?? "";
+  const delimiter = detectDelimiter(firstLine);
+
+  const rows = parseCSV(text, delimiter);
+  if (!rows.length) return { ok: false, reason: "empty_file" };
+
+  const header = rows[0].map(normalizeHeader);
+
+  const idxRu = header.findIndex(h => h === "ru" || h === "russian");
+  const idxTr = header.findIndex(h => h === "tr" || h === "turkish" || h === "türkçe");
+  const idxHard = header.findIndex(h => h === "hard");
+
+  if (idxRu === -1 || idxTr === -1) {
+    return { ok: false, reason: "bad_header" };
+  }
+
+  const imported = [];
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i];
+    const ru = (r[idxRu] ?? "").toString().trim();
+    const tr = (r[idxTr] ?? "").toString().trim();
+    if (!ru || !tr) continue;
+
+    const hard = idxHard === -1 ? false : hardToBool(r[idxHard]);
+
+    // импорт по ТЗ: w/bad/ok сбрасываем
+    const w = ensureWord({
+      id: cryptoId(),
+      ru,
+      tr,
+      hard,
+      w: W_MIN,
+      bad: 0,
+      ok: 0,
+    });
+    if (w) imported.push(w);
+  }
+
+  // дедуп внутри импорта (на всякий)
+  const seen = new Set();
+  const importedUniq = [];
+  for (const w of imported) {
+    const key = norm(w.ru) + "||" + norm(w.tr);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    importedUniq.push(w);
+  }
+
+  if (mode === "replace") {
+    saveWords(importedUniq);
+    return { ok: true, added: importedUniq.length, mode: "replace" };
+  }
+
+  // merge (по умолчанию): добавляем только то, чего нет
+  const current = loadWords();
+  const currentKeys = new Set(current.map(w => norm(w.ru) + "||" + norm(w.tr)));
+
+  const toAdd = [];
+  for (const w of importedUniq) {
+    const key = norm(w.ru) + "||" + norm(w.tr);
+    if (currentKeys.has(key)) continue;
+    toAdd.push(w);
+  }
+
+  const merged = [...toAdd, ...current]; // новые сверху
+  saveWords(merged);
+
+  return { ok: true, added: toAdd.length, mode: "merge" };
+}
+
+async function handleImportCsvFile(file) {
+  if (!file) return;
+
+  const text = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("read_error"));
+    reader.onload = () => resolve(reader.result);
+    reader.readAsText(file);
+  }).catch(() => null);
+
+  if (typeof text !== "string") {
+    alert("Не удалось прочитать файл CSV.");
+    return;
+  }
+
+  // Без лишней болтовни: даём выбор replace/merge стандартным confirm
+  const replace = confirm(
+    "Заменить текущую базу полностью?\n\nOK = заменить\nОтмена = добавить к текущей (без дублей)"
+  );
+
+  const res = importWordsFromCsvText(text, replace ? "replace" : "merge");
+  if (!res.ok) {
+    if (res.reason === "bad_header") {
+      alert('CSV не распознан. Нужны заголовки: Ru, Tr (Hard опционально). Регистр не важен.');
+    } else if (res.reason === "empty_file") {
+      alert("CSV файл пустой.");
+    } else {
+      alert("Ошибка импорта CSV.");
+    }
+    return;
+  }
+
+  renderDict();
+
+  // если пользователь сейчас в игре — пересобрать раунд, чтобы база/веса были актуальны
+  const screenGame = document.getElementById("screenGame");
+  if (screenGame && screenGame.style.display !== "none") startRound();
+
+  alert(`Импорт завершён. Добавлено: ${res.added}. Режим: ${res.mode === "replace" ? "замена" : "добавление"}.`);
+}
+
 // ===== UI: render dictionary =====
 function renderDict() {
   const listEl = document.getElementById("list");
@@ -393,7 +569,7 @@ function onPick(el) {
       }
       return;
     } else {
-      // ошибка: подсветить, обновить bad обоим (или только левому? — делаем обоим, чтобы не поощрять угадайку)
+      // ошибка: подсветить, обновить bad обоим (чтобы не поощрять угадайку)
       applyBad(pickedLeft.id);
       applyBad(pickedRight.id);
 
@@ -418,7 +594,6 @@ function applyBad(id) {
   w.w = clamp((w.w ?? W_MIN) + BAD_STEP, W_MIN, W_MAX);
 
   saveWords(words);
-  // словарь можно не перерендеривать всегда, но удобно видеть динамику
   renderDict();
 }
 
@@ -504,6 +679,26 @@ window.addEventListener("load", () => {
   document.getElementById("exportCsv")?.addEventListener("click", () => {
     exportWordsCsv();
   });
+
+  // import CSV
+  const importBtn = document.getElementById("importCsv");
+  const importInput = document.getElementById("importCsvInput");
+
+  if (importBtn && importInput) {
+    importBtn.addEventListener("click", () => {
+      // сброс value, чтобы можно было выбрать тот же файл повторно
+      importInput.value = "";
+      importInput.click();
+    });
+
+    importInput.addEventListener("change", async () => {
+      const file = importInput.files && importInput.files[0];
+      if (!file) return;
+      await handleImportCsvFile(file);
+      // на всякий — очистить выбор
+      importInput.value = "";
+    });
+  }
 
   // next round
   document.getElementById("nextRound")?.addEventListener("click", () => {
