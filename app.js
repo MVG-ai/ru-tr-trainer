@@ -60,9 +60,7 @@ function loadWords() {
   if (!Array.isArray(arr)) return [];
 
   const migrated = arr.map(ensureWordShape);
-  // сохраняем миграцию обратно, чтобы структура была стабильной
   saveWords(migrated);
-
   return migrated;
 }
 
@@ -189,12 +187,12 @@ function render() {
     const hardBtn = document.createElement("button");
     hardBtn.className = "btn-small";
     hardBtn.textContent = w.hard ? "Не сложно" : "Плохо запоминается";
-    hardBtn.onclick = () => toggleHard(w.id);
+    hardBtn.onclick = function () { toggleHard(w.id); };
 
     const delBtn = document.createElement("button");
     delBtn.className = "btn-small";
     delBtn.textContent = "Удалить";
-    delBtn.onclick = () => deleteWord(w.id);
+    delBtn.onclick = function () { deleteWord(w.id); };
 
     row.appendChild(text);
     row.appendChild(hardBtn);
@@ -235,10 +233,15 @@ function renderGame() {
     }
   });
 
-  rightItems.sort(() => Math.random() - 0.5);
+  rightItems.sort(function () { return Math.random() - 0.5; });
 
   let selectedLeft = null;
   let selectedRight = null;
+
+  function clearSelection(side) {
+    const col = (side === "left") ? leftCol : rightCol;
+    Array.from(col.children).forEach(el => { el.style.background = "#f0f0f0"; });
+  }
 
   function createCard(item, side) {
     const div = document.createElement("div");
@@ -251,29 +254,39 @@ function renderGame() {
 
     div.onclick = function () {
       if (side === "left") {
+        clearSelection("left");
         selectedLeft = { id: item.id, el: div };
       } else {
+        clearSelection("right");
         selectedRight = { id: item.id, el: div };
       }
-
       div.style.background = "#bbdefb";
     };
 
     return div;
   }
 
-  leftItems.forEach(item => {
-    leftCol.appendChild(createCard(item, "left"));
-  });
-
-  rightItems.forEach(item => {
-    rightCol.appendChild(createCard(item, "right"));
-  });
+  leftItems.forEach(item => { leftCol.appendChild(createCard(item, "left")); });
+  rightItems.forEach(item => { rightCol.appendChild(createCard(item, "right")); });
 
   container.appendChild(leftCol);
   container.appendChild(rightCol);
   gameArea.appendChild(container);
 }
+
+// Переключение экранов Словарь/Игра
+function setActiveTab(tab) {
+  const screenDict = document.getElementById("screenDict");
+  const screenGame = document.getElementById("screenGame");
+  const tabDict = document.getElementById("tabDict");
+  const tabGame = document.getElementById("tabGame");
+
+  if (screenDict && screenGame) {
+    const isDict = tab === "dict";
+    screenDict.style.display = isDict ? "" : "none";
+    screenGame.style.display = isDict ? "none" : "";
+  }
+
   if (tabDict && tabGame) {
     tabDict.classList.toggle("active", tab === "dict");
     tabGame.classList.toggle("active", tab === "game");
@@ -321,4 +334,4 @@ window.onload = function () {
 
   // По умолчанию словарь
   setActiveTab("dict");
-};;
+};
