@@ -260,19 +260,20 @@ window.onload = function () {
   const direction = document.getElementById("direction");
   if (direction) {
     direction.value = loadDirection();
-    direction.onchange = () => saveDirection(direction.value);
+    direction.onchange = function () {
+      saveDirection(direction.value);
+    };
   }
 
   // Вкладки
   const tabDict = document.getElementById("tabDict");
   const tabGame = document.getElementById("tabGame");
-
-  if (tabDict) tabDict.onclick = () => setActiveTab("dict");
-  if (tabGame) tabGame.onclick = () => setActiveTab("game");
+  if (tabDict) tabDict.onclick = function () { setActiveTab("dict"); };
+  if (tabGame) tabGame.onclick = function () { setActiveTab("game"); };
 
   // Добавление
   if (add && ru && tr) {
-    add.onclick = () => {
+    add.onclick = function () {
       addWord(ru.value, tr.value, hard ? hard.checked : false);
       ru.value = "";
       tr.value = "";
@@ -286,4 +287,4 @@ window.onload = function () {
 
   // По умолчанию словарь
   setActiveTab("dict");
-};
+};;
