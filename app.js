@@ -3,7 +3,6 @@
 const STORAGE_KEY = "ru_tr_words";
 const DIRECTION_KEY = "ru_tr_direction";
 
-
 // Параметры весов (зафиксировали)
 const HARD_BOOST = 2.5;
 const W_MIN = 1;
@@ -20,7 +19,6 @@ function norm(s) {
       .toLowerCase()
       .normalize("NFKC");
   } catch {
-    // на случай если normalize по какой-то причине недоступен
     return (s ?? "").toString().trim().toLowerCase();
   }
 }
@@ -42,6 +40,10 @@ function ensureWordShape(w) {
   };
 }
 
+function saveWords(words) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(words));
+}
+
 function loadWords() {
   const data = localStorage.getItem(STORAGE_KEY);
   if (!data) return [];
@@ -50,7 +52,6 @@ function loadWords() {
   try {
     arr = JSON.parse(data);
   } catch (e) {
-    // Если JSON битый — очищаем только хранилище словаря (чтобы приложение ожило)
     console.warn("Bad JSON in storage, resetting words storage:", e);
     localStorage.removeItem(STORAGE_KEY);
     return [];
@@ -59,15 +60,19 @@ function loadWords() {
   if (!Array.isArray(arr)) return [];
 
   const migrated = arr.map(ensureWordShape);
-
-  // Сохраняем миграцию обратно всегда (это дешевле, чем гадать)
+  // сохраняем миграцию обратно, чтобы структура была стабильной
   saveWords(migrated);
 
   return migrated;
 }
 
-function saveWords(words) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(words));
+// Направление RU→TR / TR→RU
+function loadDirection() {
+  return localStorage.getItem(DIRECTION_KEY) || "ru-tr";
+}
+
+function saveDirection(val) {
+  localStorage.setItem(DIRECTION_KEY, val);
 }
 
 function addWord(ru, tr, hardFlag) {
@@ -129,7 +134,7 @@ function resetPriorityMemory() {
   render();
 }
 
-// Выбор 10 слов с учётом веса и hardBoost, без повторов
+// Выбор N слов с учётом веса и hardBoost, без повторов
 function getRoundWords(count = 10) {
   const words = loadWords();
   if (words.length <= count) return [...words];
@@ -139,15 +144,18 @@ function getRoundWords(count = 10) {
 
   while (result.length < count && pool.length > 0) {
     const totalWeight = pool.reduce((sum, w) => {
-      const effective = (w.w || 1) * (w.hard ? HARD_BOOST : 1);
+      const ww = (typeof w.w === "number" ? w.w : 1);
+      const effective = ww * (w.hard ? HARD_BOOST : 1);
       return sum + effective;
     }, 0);
 
     let r = Math.random() * totalWeight;
 
     for (let i = 0; i < pool.length; i++) {
-      const effective = (pool[i].w || 1) * (pool[i].hard ? HARD_BOOST : 1);
+      const ww = (typeof pool[i].w === "number" ? pool[i].w : 1);
+      const effective = ww * (pool[i].hard ? HARD_BOOST : 1);
       r -= effective;
+
       if (r <= 0) {
         result.push(pool[i]);
         pool.splice(i, 1);
@@ -162,8 +170,6 @@ function getRoundWords(count = 10) {
 function render() {
   const list = document.getElementById("list");
   const count = document.getElementById("count");
-
-  // Если экран словаря сейчас не в DOM / переименован — просто не падаем
   if (!list || !count) return;
 
   const words = loadWords();
@@ -196,6 +202,7 @@ function render() {
     list.appendChild(row);
   });
 }
+
 function renderGame() {
   const gameArea = document.getElementById("gameArea");
   if (!gameArea) return;
@@ -211,16 +218,16 @@ function renderGame() {
     row.style.borderBottom = "1px solid #ddd";
 
     if (direction === "ru-tr") {
-      row.textContent = w.ru + " — " + w.tr;
+      row.textContent = `${w.ru} — ${w.tr}`;
     } else {
-      row.textContent = w.tr + " — " + w.ru;
+      row.textContent = `${w.tr} — ${w.ru}`;
     }
 
     gameArea.appendChild(row);
   });
 }
 
-// Переключение экранов Словарь/Игра (если ты уже добавил screenDict/screenGame)
+// Переключение экранов Словарь/Игра
 function setActiveTab(tab) {
   const screenDict = document.getElementById("screenDict");
   const screenGame = document.getElementById("screenGame");
@@ -238,19 +245,9 @@ function setActiveTab(tab) {
     tabGame.classList.toggle("active", tab === "game");
   }
 
-  // Когда возвращаемся на словарь — перерисуем
   if (tab === "dict") render();
+  if (tab === "game") renderGame();
 }
-if (tab === "game") renderGame();
-
-function loadDirection() {
-  return localStorage.getItem(DIRECTION_KEY) || "ru-tr";
-}
-
-function saveDirection(val) {
-  localStorage.setItem(DIRECTION_KEY, val);
-}
-
 
 window.onload = function () {
   const ru = document.getElementById("ru");
@@ -259,20 +256,21 @@ window.onload = function () {
   const hard = document.getElementById("hard");
   const reset = document.getElementById("reset");
 
-const direction = document.getElementById("direction");
-if (direction) {
-  direction.value = loadDirection();
-  direction.onchange = () => saveDirection(direction.value);
-}
+  // Направление
+  const direction = document.getElementById("direction");
+  if (direction) {
+    direction.value = loadDirection();
+    direction.onchange = () => saveDirection(direction.value);
+  }
 
-  
-  // Вкладки (если они есть)
+  // Вкладки
   const tabDict = document.getElementById("tabDict");
   const tabGame = document.getElementById("tabGame");
 
   if (tabDict) tabDict.onclick = () => setActiveTab("dict");
   if (tabGame) tabGame.onclick = () => setActiveTab("game");
 
+  // Добавление
   if (add && ru && tr) {
     add.onclick = () => {
       addWord(ru.value, tr.value, hard ? hard.checked : false);
@@ -283,9 +281,9 @@ if (direction) {
     };
   }
 
+  // Сброс памяти приоритета
   if (reset) reset.onclick = resetPriorityMemory;
 
-  // По умолчанию показываем словарь (если есть экраны)
+  // По умолчанию словарь
   setActiveTab("dict");
-  render();
 };
