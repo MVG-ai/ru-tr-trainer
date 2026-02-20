@@ -196,6 +196,29 @@ function render() {
     list.appendChild(row);
   });
 }
+function renderGame() {
+  const gameArea = document.getElementById("gameArea");
+  if (!gameArea) return;
+
+  const direction = loadDirection();
+  const words = getRoundWords(10);
+
+  gameArea.innerHTML = "";
+
+  words.forEach(w => {
+    const row = document.createElement("div");
+    row.style.padding = "8px";
+    row.style.borderBottom = "1px solid #ddd";
+
+    if (direction === "ru-tr") {
+      row.textContent = w.ru + " — " + w.tr;
+    } else {
+      row.textContent = w.tr + " — " + w.ru;
+    }
+
+    gameArea.appendChild(row);
+  });
+}
 
 // Переключение экранов Словарь/Игра (если ты уже добавил screenDict/screenGame)
 function setActiveTab(tab) {
@@ -218,6 +241,7 @@ function setActiveTab(tab) {
   // Когда возвращаемся на словарь — перерисуем
   if (tab === "dict") render();
 }
+if (tab === "game") renderGame();
 
 function loadDirection() {
   return localStorage.getItem(DIRECTION_KEY) || "ru-tr";
