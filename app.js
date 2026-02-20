@@ -1,5 +1,4 @@
 // ===== LocalStorage версия (стабильно для iPhone) =====
-
 const STORAGE_KEY = "ru_tr_words";
 const DIRECTION_KEY = "ru_tr_direction";
 
@@ -23,420 +22,495 @@ function norm(s) {
   }
 }
 
-// Мягкая миграция старых записей в новый формат
-function ensureWordShape(w) {
-  const id = (w && w.id != null) ? w.id : (Date.now() + Math.floor(Math.random() * 1000));
-  const ru = (w && w.ru != null) ? w.ru : "";
-  const tr = (w && w.tr != null) ? w.tr : "";
+// ===== Мягкая миграция/нормализация записи слова =====
+function ensureWord(raw) {
+  if (!raw || typeof raw !== "object") return null;
 
-  return {
+  // допускаем старые форматы: {ru,tr}, {r,t}, и т.п.
+  const ru = (raw.ru ?? raw.Ru ?? raw.RU ?? raw.r ?? raw.R ?? "").toString();
+  const tr = (raw.tr ?? raw.Tr ?? raw.TR ?? raw.t ?? raw.T ?? "").toString();
+
+  const w = Number.isFinite(+raw.w) ? +raw.w : W_MIN;
+  const bad = Number.isFinite(+raw.bad) ? +raw.bad : 0;
+  const ok = Number.isFinite(+raw.ok) ? +raw.ok : 0;
+
+  // hard может быть boolean / 0/1 / "1"
+  const hard =
+    raw.hard === true ||
+    raw.hard === 1 ||
+    raw.hard === "1" ||
+    raw.Hard === 1 ||
+    raw.Hard === "1" ||
+    raw.HARD === 1 ||
+    raw.HARD === "1";
+
+  // id — стабильный, но если нет — создаём
+  const id = (raw.id ?? raw._id ?? "").toString().trim() || cryptoId();
+
+  const clean = {
     id,
-    ru: ru.toString(),
-    tr: tr.toString(),
-    hard: !!(w && w.hard),
-    w: (w && typeof w.w === "number") ? w.w : 1,
-    ok: (w && typeof w.ok === "number") ? w.ok : 0,
-    bad: (w && typeof w.bad === "number") ? w.bad : 0,
+    ru: ru.trim(),
+    tr: tr.trim(),
+    hard,
+    w: clamp(w, W_MIN, W_MAX),
+    bad: Math.max(0, Math.floor(bad)),
+    ok: Math.max(0, Math.floor(ok)),
   };
+
+  // пустые слова не пускаем
+  if (!clean.ru || !clean.tr) return null;
+  return clean;
+}
+
+function cryptoId() {
+  // Безопасно для iOS: если crypto.randomUUID есть — используем, иначе fallback
+  if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
+  return "id_" + Math.random().toString(16).slice(2) + "_" + Date.now().toString(16);
+}
+
+function clamp(x, a, b) {
+  return Math.max(a, Math.min(b, x));
+}
+
+// ===== Storage =====
+function loadWords() {
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (!raw) return [];
+  try {
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return [];
+    const out = [];
+    for (const item of arr) {
+      const w = ensureWord(item);
+      if (w) out.push(w);
+    }
+    // сохраняем обратно уже в нормализованном виде (мягкая миграция)
+    saveWords(out);
+    return out;
+  } catch {
+    return [];
+  }
 }
 
 function saveWords(words) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(words));
 }
 
-function loadWords() {
-  const data = localStorage.getItem(STORAGE_KEY);
-  if (!data) return [];
-
-  let arr;
-  try {
-    arr = JSON.parse(data);
-  } catch (e) {
-    console.warn("Bad JSON in storage, resetting words storage:", e);
-    localStorage.removeItem(STORAGE_KEY);
-    return [];
-  }
-
-  if (!Array.isArray(arr)) return [];
-
-  const migrated = arr.map(ensureWordShape);
-  saveWords(migrated);
-  return migrated;
+function getDirection() {
+  const d = localStorage.getItem(DIRECTION_KEY);
+  return d === "tr-ru" ? "tr-ru" : "ru-tr";
 }
 
-// Направление RU→TR / TR→RU
-function loadDirection() {
-  return localStorage.getItem(DIRECTION_KEY) || "ru-tr";
+function setDirection(d) {
+  localStorage.setItem(DIRECTION_KEY, d === "tr-ru" ? "tr-ru" : "ru-tr");
 }
 
-function saveDirection(val) {
-  localStorage.setItem(DIRECTION_KEY, val);
-}
-
-function addWord(ru, tr, hardFlag) {
-  ru = (ru ?? "").toString().trim();
-  tr = (tr ?? "").toString().trim();
-  if (!ru || !tr) return;
-
-  const nru = norm(ru);
-  const ntr = norm(tr);
-
+// ===== Dictionary ops =====
+function addWord(ru, tr, hard) {
   const words = loadWords();
 
-  // дедуп: не добавляем, если уже есть точно такая пара (case-insensitive)
-  const exists = words.some(w => norm(w.ru) === nru && norm(w.tr) === ntr);
-  if (exists) {
-    alert("Такая пара уже есть (Дом=дом).");
-    return;
-  }
-
-  words.push({
-    id: Date.now(),
+  const newRec = ensureWord({
+    id: cryptoId(),
     ru,
     tr,
-    hard: !!hardFlag,
-    w: 1,
+    hard: !!hard,
+    w: W_MIN,
+    bad: 0,
     ok: 0,
-    bad: 0
   });
+  if (!newRec) return { ok: false, reason: "empty" };
 
+  // дедуп: case-insensitive ru+tr
+  const keyNew = norm(newRec.ru) + "||" + norm(newRec.tr);
+  for (const w of words) {
+    const keyOld = norm(w.ru) + "||" + norm(w.tr);
+    if (keyOld === keyNew) return { ok: false, reason: "dup" };
+  }
+
+  words.unshift(newRec);
   saveWords(words);
-  render();
+  return { ok: true };
 }
 
-function deleteWord(id) {
-  let words = loadWords();
-  words = words.filter(w => w.id !== id);
+function deleteWordById(id) {
+  const words = loadWords().filter(w => w.id !== id);
   saveWords(words);
-  render();
 }
 
-function toggleHard(id) {
+function toggleHardById(id) {
   const words = loadWords();
   const w = words.find(x => x.id === id);
   if (!w) return;
   w.hard = !w.hard;
   saveWords(words);
-  render();
 }
 
 function resetPriorityMemory() {
   const words = loadWords();
-  words.forEach(w => {
-    w.w = 1;
-    w.ok = 0;
+  for (const w of words) {
+    w.w = W_MIN;
     w.bad = 0;
-  });
+    w.ok = 0;
+  }
   saveWords(words);
-  alert("Память приоритета слов обнулена.");
-  render();
 }
 
-// Выбор N слов с учётом веса и hardBoost, без повторов
-function getRoundWords(count = 10) {
-  const words = loadWords();
-
-  // ✅ ВАЖНО: даже если слов <= count, возвращаем их ПЕРЕМЕШАННЫМИ
-  if (words.length <= count) {
-    const shuffled = [...words].sort(function () { return Math.random() - 0.5; });
-    return shuffled;
-  }
-
-  const pool = [...words];
-  const result = [];
-
-  while (result.length < count && pool.length > 0) {
-    const totalWeight = pool.reduce((sum, w) => {
-      const ww = (typeof w.w === "number" ? w.w : 1);
-      const effective = ww * (w.hard ? HARD_BOOST : 1);
-      return sum + effective;
-    }, 0);
-
-    let r = Math.random() * totalWeight;
-
-    for (let i = 0; i < pool.length; i++) {
-      const ww = (typeof pool[i].w === "number" ? pool[i].w : 1);
-      const effective = ww * (pool[i].hard ? HARD_BOOST : 1);
-      r -= effective;
-
-      if (r <= 0) {
-        result.push(pool[i]);
-        pool.splice(i, 1);
-        break;
-      }
-    }
-  }
-
-  return result;
+// ===== CSV EXPORT (Ru,Tr,Hard) =====
+function csvEscape(v) {
+  const s = (v ?? "").toString();
+  // если есть спецсимволы — оборачиваем в кавычки и удваиваем кавычки
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
 }
 
-function render() {
-  const list = document.getElementById("list");
-  const count = document.getElementById("count");
-  if (!list || !count) return;
+function exportWordsCsv() {
+  const words = loadWords();
+
+  // BOM — чтобы Excel/Numbers корректно читали UTF-8
+  let csv = "\uFEFFRu,Tr,Hard\n";
+
+  for (const w of words) {
+    const hard = w.hard ? "1" : "0";
+    csv += `${csvEscape(w.ru)},${csvEscape(w.tr)},${hard}\n`;
+  }
+
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const filename = `ru-tr-words_${yyyy}-${mm}-${dd}.csv`;
+
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+// ===== UI: render dictionary =====
+function renderDict() {
+  const listEl = document.getElementById("list");
+  const countEl = document.getElementById("count");
+  if (!listEl || !countEl) return;
 
   const words = loadWords();
-  list.innerHTML = "";
-  count.textContent = words.length;
+  countEl.textContent = String(words.length);
+  listEl.innerHTML = "";
 
-  words.forEach(w => {
+  if (!words.length) {
+    listEl.innerHTML = `<div style="opacity:.7;">Пока пусто. Добавь слова.</div>`;
+    return;
+  }
+
+  for (const w of words) {
     const row = document.createElement("div");
     row.className = "row";
 
-    const text = document.createElement("div");
-    text.className = "row-text";
+    const hardMark = w.hard ? "✅" : "⬜️";
 
-    const hardMark = w.hard ? " ★" : "";
-    text.textContent = `${w.ru} — ${w.tr}${hardMark}`;
+    row.innerHTML = `
+      <div style="display:flex; gap:10px; align-items:center; justify-content:space-between;">
+        <div style="flex:1;">
+          <div><b>${escapeHtml(w.ru)}</b> — ${escapeHtml(w.tr)}</div>
+          <div style="opacity:.6; font-size:12px;">w=${w.w.toFixed(2)} | bad=${w.bad} | ok=${w.ok}</div>
+        </div>
 
-    const hardBtn = document.createElement("button");
-    hardBtn.className = "btn-small";
-    hardBtn.textContent = w.hard ? "Не сложно" : "Плохо запоминается";
-    hardBtn.onclick = function () { toggleHard(w.id); };
+        <button data-act="hard" data-id="${w.id}" title="hard">${hardMark}</button>
+        <button data-act="del" data-id="${w.id}" title="delete">🗑️</button>
+      </div>
+    `;
 
-    const delBtn = document.createElement("button");
-    delBtn.className = "btn-small";
-    delBtn.textContent = "Удалить";
-    delBtn.onclick = function () { deleteWord(w.id); };
+    listEl.appendChild(row);
+  }
 
-    row.appendChild(text);
-    row.appendChild(hardBtn);
-    row.appendChild(delBtn);
-    list.appendChild(row);
+  // делегирование
+  listEl.querySelectorAll("button[data-act]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const act = btn.getAttribute("data-act");
+      const id = btn.getAttribute("data-id");
+      if (!id) return;
+      if (act === "del") deleteWordById(id);
+      if (act === "hard") toggleHardById(id);
+      renderDict();
+    });
   });
 }
 
-// Обновление одного слова в storage (по id)
-function updateWordInStorage(updatedWord) {
-  const all = loadWords();
-  const next = all.map(w => (w.id === updatedWord.id ? updatedWord : w));
-  saveWords(next);
+function escapeHtml(s) {
+  return (s ?? "")
+    .toString()
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+// ===== GAME =====
+let roundPairs = [];     // [{id, left, right}]
+let leftPool = [];       // [{id,text}]
+let rightPool = [];      // [{id,text}]
+let pickedLeft = null;   // {id,text}
+let pickedRight = null;  // {id,text}
+let wrongPair = null;    // {leftId,rightId} for red highlight
+
+function effectiveWeight(w) {
+  const base = Number.isFinite(+w.w) ? +w.w : W_MIN;
+  return base * (w.hard ? HARD_BOOST : 1);
+}
+
+function weightedSampleWithoutReplacement(items, k) {
+  // простой и стабильный: повторяем k раз "roulette" по текущим весам, исключая выбранное
+  const pool = items.slice();
+  const picked = [];
+
+  while (pool.length && picked.length < k) {
+    let total = 0;
+    for (const x of pool) total += effectiveWeight(x);
+
+    // если вдруг total=0
+    if (total <= 0) {
+      picked.push(pool.shift());
+      continue;
+    }
+
+    let r = Math.random() * total;
+    let idx = 0;
+    for (; idx < pool.length; idx++) {
+      r -= effectiveWeight(pool[idx]);
+      if (r <= 0) break;
+    }
+    if (idx >= pool.length) idx = pool.length - 1;
+
+    picked.push(pool[idx]);
+    pool.splice(idx, 1);
+  }
+
+  return picked;
+}
+
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+function startRound() {
+  const words = loadWords();
+  const gameArea = document.getElementById("gameArea");
+  if (!gameArea) return;
+
+  pickedLeft = null;
+  pickedRight = null;
+  wrongPair = null;
+
+  if (words.length < 2) {
+    gameArea.innerHTML = `<div style="opacity:.7;">Нужно хотя бы 2 слова в базе.</div>`;
+    return;
+  }
+
+  const d = getDirection();
+  const n = Math.min(10, words.length);
+  const chosen = weightedSampleWithoutReplacement(words, n);
+
+  roundPairs = chosen.map(w => {
+    if (d === "ru-tr") return { id: w.id, left: w.ru, right: w.tr };
+    return { id: w.id, left: w.tr, right: w.ru };
+  });
+
+  leftPool = roundPairs.map(p => ({ id: p.id, text: p.left }));
+  rightPool = roundPairs.map(p => ({ id: p.id, text: p.right }));
+
+  shuffle(leftPool);
+  shuffle(rightPool);
+
+  renderGame();
 }
 
 function renderGame() {
   const gameArea = document.getElementById("gameArea");
   if (!gameArea) return;
 
-  const direction = loadDirection();
-  const words = getRoundWords(10);
+  const leftHtml = leftPool.map(x => {
+    const active = pickedLeft?.id === x.id ? " active" : "";
+    const wrong = wrongPair && wrongPair.leftId === x.id ? " wrong" : "";
+    return `<div class="card${active}${wrong}" data-side="L" data-id="${x.id}">${escapeHtml(x.text)}</div>`;
+  }).join("");
 
-  gameArea.innerHTML = "";
+  const rightHtml = rightPool.map(x => {
+    const active = pickedRight?.id === x.id ? " active" : "";
+    const wrong = wrongPair && wrongPair.rightId === x.id ? " wrong" : "";
+    return `<div class="card${active}${wrong}" data-side="R" data-id="${x.id}">${escapeHtml(x.text)}</div>`;
+  }).join("");
 
-  const container = document.createElement("div");
-  container.style.display = "flex";
-  container.style.gap = "10px";
+  gameArea.innerHTML = `
+    <div class="cols">
+      <div class="col">${leftHtml}</div>
+      <div class="col">${rightHtml}</div>
+    </div>
+  `;
 
-  const leftCol = document.createElement("div");
-  leftCol.style.flex = "1";
-
-  const rightCol = document.createElement("div");
-  rightCol.style.flex = "1";
-
-  // Быстрый доступ к словам по id (это те 10, что в раунде)
-  const wordsMap = {};
-  words.forEach(w => { wordsMap[w.id] = w; });
-
-  const leftItems = [];
-  const rightItems = [];
-
-  words.forEach(w => {
-    if (direction === "ru-tr") {
-      leftItems.push({ text: w.ru, id: w.id });
-      rightItems.push({ text: w.tr, id: w.id });
-    } else {
-      leftItems.push({ text: w.tr, id: w.id });
-      rightItems.push({ text: w.ru, id: w.id });
-    }
+  gameArea.querySelectorAll(".card").forEach(el => {
+    el.addEventListener("click", () => onPick(el));
   });
-
-  // Правая перемешивается (как и раньше)
-  rightItems.sort(function () { return Math.random() - 0.5; });
-
-  let selectedLeft = null;
-  let selectedRight = null;
-
-  function setCardBaseStyle(el) { el.style.background = "#f0f0f0"; }
-  function setCardSelectedStyle(el) { el.style.background = "#bbdefb"; }
-  function setCardErrorStyle(el) { el.style.background = "#ffcdd2"; }
-
-  function updateWordStats(word, isCorrect) {
-    if (!word) return;
-
-    if (isCorrect) {
-      word.ok += 1;
-      // ВАЖНО: уменьшаем вес только если он уже увеличен
-      if (word.w > W_MIN) {
-        word.w = Math.max(W_MIN, word.w - OK_STEP);
-      }
-    } else {
-      word.bad += 1;
-      word.w = Math.min(W_MAX, word.w + BAD_STEP);
-    }
-
-    updateWordInStorage(word);
-  }
-
-  function resetSelection() {
-    selectedLeft = null;
-    selectedRight = null;
-  }
-
-  function checkMatchIfReady() {
-    if (!selectedLeft || !selectedRight) return;
-
-    const isCorrect = selectedLeft.id === selectedRight.id;
-
-    if (isCorrect) {
-      const word = wordsMap[selectedLeft.id];
-      updateWordStats(word, true);
-
-      selectedLeft.el.remove();
-      selectedRight.el.remove();
-
-      resetSelection();
-
-      const leftRemain = leftCol.querySelectorAll("div[data-side='left']").length;
-      const rightRemain = rightCol.querySelectorAll("div[data-side='right']").length;
-      if (leftRemain === 0 && rightRemain === 0) {
-        setTimeout(function () { renderGame(); }, 300);
-      }
-      return;
-    }
-
-    const word = wordsMap[selectedLeft.id];
-    updateWordStats(word, false);
-
-    setCardErrorStyle(selectedLeft.el);
-    setCardErrorStyle(selectedRight.el);
-
-    setTimeout(function () {
-      if (selectedLeft && selectedLeft.el && document.body.contains(selectedLeft.el)) {
-        setCardBaseStyle(selectedLeft.el);
-      }
-      if (selectedRight && selectedRight.el && document.body.contains(selectedRight.el)) {
-        setCardBaseStyle(selectedRight.el);
-      }
-      resetSelection();
-    }, 500);
-  }
-
-  function createCard(item, side) {
-    const div = document.createElement("div");
-    div.textContent = item.text;
-    div.dataset.side = side;
-    div.dataset.id = String(item.id);
-
-    div.style.padding = "8px";
-    div.style.marginBottom = "6px";
-    div.style.background = "#f0f0f0";
-    div.style.borderRadius = "8px";
-    div.style.cursor = "pointer";
-    div.style.userSelect = "none";
-
-    div.onclick = function () {
-      const col = (side === "left") ? leftCol : rightCol;
-      Array.from(col.children).forEach(function (el) {
-        if (el && el.style) setCardBaseStyle(el);
-      });
-
-      setCardSelectedStyle(div);
-
-      if (side === "left") {
-        selectedLeft = { id: item.id, el: div };
-      } else {
-        selectedRight = { id: item.id, el: div };
-      }
-
-      checkMatchIfReady();
-    };
-
-    return div;
-  }
-
-  leftItems.forEach(function (item) {
-    leftCol.appendChild(createCard(item, "left"));
-  });
-
-  rightItems.forEach(function (item) {
-    rightCol.appendChild(createCard(item, "right"));
-  });
-
-  container.appendChild(leftCol);
-  container.appendChild(rightCol);
-  gameArea.appendChild(container);
 }
 
-// Переключение экранов Словарь/Игра
-function setActiveTab(tab) {
+function onPick(el) {
+  const side = el.getAttribute("data-side");
+  const id = el.getAttribute("data-id");
+  if (!id) return;
+
+  wrongPair = null;
+
+  if (side === "L") pickedLeft = leftPool.find(x => x.id === id) || null;
+  if (side === "R") pickedRight = rightPool.find(x => x.id === id) || null;
+
+  // если выбраны обе — проверяем
+  if (pickedLeft && pickedRight) {
+    if (pickedLeft.id === pickedRight.id) {
+      // правильно: убрать пару из раунда, обновить статистику
+      applyOk(pickedLeft.id);
+
+      leftPool = leftPool.filter(x => x.id !== pickedLeft.id);
+      rightPool = rightPool.filter(x => x.id !== pickedRight.id);
+
+      pickedLeft = null;
+      pickedRight = null;
+
+      renderGame();
+
+      // если раунд закончился — авто следующий
+      if (leftPool.length === 0) {
+        startRound();
+      }
+      return;
+    } else {
+      // ошибка: подсветить, обновить bad обоим (или только левому? — делаем обоим, чтобы не поощрять угадайку)
+      applyBad(pickedLeft.id);
+      applyBad(pickedRight.id);
+
+      wrongPair = { leftId: pickedLeft.id, rightId: pickedRight.id };
+      pickedLeft = null;
+      pickedRight = null;
+
+      renderGame();
+      return;
+    }
+  }
+
+  renderGame();
+}
+
+function applyBad(id) {
+  const words = loadWords();
+  const w = words.find(x => x.id === id);
+  if (!w) return;
+
+  w.bad = (w.bad ?? 0) + 1;
+  w.w = clamp((w.w ?? W_MIN) + BAD_STEP, W_MIN, W_MAX);
+
+  saveWords(words);
+  // словарь можно не перерендеривать всегда, но удобно видеть динамику
+  renderDict();
+}
+
+function applyOk(id) {
+  const words = loadWords();
+  const w = words.find(x => x.id === id);
+  if (!w) return;
+
+  w.ok = (w.ok ?? 0) + 1;
+
+  if ((w.w ?? W_MIN) > W_MIN) {
+    w.w = clamp((w.w ?? W_MIN) - OK_STEP, W_MIN, W_MAX);
+  }
+
+  saveWords(words);
+  renderDict();
+}
+
+// ===== Tabs =====
+function showScreen(name) {
   const screenDict = document.getElementById("screenDict");
   const screenGame = document.getElementById("screenGame");
   const tabDict = document.getElementById("tabDict");
   const tabGame = document.getElementById("tabGame");
 
-  if (screenDict && screenGame) {
-    const isDict = tab === "dict";
-    screenDict.style.display = isDict ? "" : "none";
-    screenGame.style.display = isDict ? "none" : "";
-  }
+  if (!screenDict || !screenGame || !tabDict || !tabGame) return;
 
-  if (tabDict && tabGame) {
-    tabDict.classList.toggle("active", tab === "dict");
-    tabGame.classList.toggle("active", tab === "game");
+  if (name === "dict") {
+    screenDict.style.display = "";
+    screenGame.style.display = "none";
+    tabDict.classList.add("active");
+    tabGame.classList.remove("active");
+    renderDict();
+  } else {
+    screenDict.style.display = "none";
+    screenGame.style.display = "";
+    tabDict.classList.remove("active");
+    tabGame.classList.add("active");
+    startRound();
   }
-
-  if (tab === "dict") render();
-  if (tab === "game") renderGame();
 }
 
-window.onload = function () {
-  const ru = document.getElementById("ru");
-  const tr = document.getElementById("tr");
-  const add = document.getElementById("add");
-  const hard = document.getElementById("hard");
-  const reset = document.getElementById("reset");
-
-  // Направление
-  const direction = document.getElementById("direction");
-  if (direction) {
-    direction.value = loadDirection();
-    direction.onchange = function () {
-      saveDirection(direction.value);
+// ===== init =====
+window.addEventListener("load", () => {
+  // direction init
+  const dirSel = document.getElementById("direction");
+  if (dirSel) {
+    dirSel.value = getDirection();
+    dirSel.addEventListener("change", () => {
+      setDirection(dirSel.value);
+      // если мы в игре — пересобрать раунд
       const screenGame = document.getElementById("screenGame");
-      if (screenGame && screenGame.style.display !== "none") {
-        renderGame();
-      }
-    };
+      if (screenGame && screenGame.style.display !== "none") startRound();
+    });
   }
 
-  // Вкладки
-  const tabDict = document.getElementById("tabDict");
-  const tabGame = document.getElementById("tabGame");
-  if (tabDict) tabDict.onclick = function () { setActiveTab("dict"); };
-  if (tabGame) tabGame.onclick = function () { setActiveTab("game"); };
+  // tabs
+  document.getElementById("tabDict")?.addEventListener("click", () => showScreen("dict"));
+  document.getElementById("tabGame")?.addEventListener("click", () => showScreen("game"));
 
-  // Добавление
-  if (add && ru && tr) {
-    add.onclick = function () {
-      addWord(ru.value, tr.value, hard ? hard.checked : false);
-      ru.value = "";
-      tr.value = "";
-      if (hard) hard.checked = false;
-      ru.focus();
-    };
-  }
+  // add word
+  document.getElementById("add")?.addEventListener("click", () => {
+    const ru = document.getElementById("ru")?.value ?? "";
+    const tr = document.getElementById("tr")?.value ?? "";
+    const hard = !!document.getElementById("hard")?.checked;
 
-  // Сброс памяти приоритета
-  if (reset) reset.onclick = resetPriorityMemory;
+    const res = addWord(ru, tr, hard);
+    if (res.ok) {
+      document.getElementById("ru").value = "";
+      document.getElementById("tr").value = "";
+      document.getElementById("hard").checked = false;
+    }
+    renderDict();
+  });
 
-  // ===== Кнопка "Следующий раунд" =====
-  const nextRound = document.getElementById("nextRound");
-  if (nextRound) {
-    nextRound.onclick = function (e) {
-      if (e && e.preventDefault) e.preventDefault();
-      renderGame();
-    };
-  }
+  // reset memory
+  document.getElementById("reset")?.addEventListener("click", () => {
+    resetPriorityMemory();
+    renderDict();
+  });
 
-  // По умолчанию словарь
-  setActiveTab("dict");
-};
+  // export CSV
+  document.getElementById("exportCsv")?.addEventListener("click", () => {
+    exportWordsCsv();
+  });
+
+  // next round
+  document.getElementById("nextRound")?.addEventListener("click", () => {
+    startRound();
+  });
+
+  // initial render
+  renderDict();
+  showScreen("dict");
+});
