@@ -26,6 +26,35 @@ button {
     color: white;
 }
 
+/* ===== NEW: нейтральные кнопки ===== */
+.btn-neutral{
+  background: #eef2f7 !important;
+  color: #1f2937 !important;
+  border: 1px solid #cbd5e1 !important;
+}
+
+.btn-neutral:active{
+  transform: scale(0.99);
+}
+
+/* маленькие нейтральные кнопки в строках словаря */
+.btn-small{
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid #cbd5e1;
+  background: #eef2f7;
+  color: #1f2937;
+  font-size: 14px;
+  margin: 0; /* чтобы не раздувало строку */
+}
+
+/* чтобы кнопки в строке словаря выглядели одинаково по ширине */
+#list .btn-small{
+  min-width: 140px;
+  text-align: center;
+}
+
+/* ===== 기존 ===== */
 .bottom-nav {
     position: fixed;
     bottom: 0;
@@ -67,14 +96,6 @@ input {
 }
 
 .row-text { font-weight: 600; }
-
-.btn-small {
-  padding: 8px 10px;
-  border-radius: 10px;
-  border: none;
-  background: #d32f2f;
-  color: white;
-}
 
 /* FIX: строка словаря не должна разъезжаться на мобиле */
 #list .row{
@@ -140,4 +161,3 @@ input {
   padding:8px;
   border-radius:8px;
 }
-
