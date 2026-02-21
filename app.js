@@ -353,17 +353,16 @@ function renderDict() {
     const row = document.createElement("div");
     row.className = "row";
 
-    const hardMark = w.hard ? "✅" : "⬜️";
+    const hardText = w.hard ? "сложное ✓" : "отметить как сложное";
 
-    // ТЕХНИЧЕСКУЮ СТРОКУ (w/bad/ok) УБРАЛИ
     row.innerHTML = `
-      <div style="display:flex; gap:10px; align-items:center; justify-content:space-between;">
-        <div style="flex:1;">
+      <div style="display:flex; gap:10px; align-items:center; justify-content:space-between; width:100%;">
+        <div style="flex:1; min-width:0;">
           <div><b>${escapeHtml(w.ru)}</b> — ${escapeHtml(w.tr)}</div>
         </div>
 
-        <button data-act="hard" data-id="${w.id}" title="hard">${hardMark}</button>
-        <button data-act="del" data-id="${w.id}" title="delete">🗑️</button>
+        <button class="btn-small" data-act="hard" data-id="${w.id}">${hardText}</button>
+        <button class="btn-small" data-act="del" data-id="${w.id}">удалить</button>
       </div>
     `;
 
@@ -570,7 +569,6 @@ function onPick(el) {
 
         if (leftPool.length === 0) startRound();
       }, FEEDBACK_MS);
-
     } else {
       applyBad(pickedLeft.id);
       applyBad(pickedRight.id);
@@ -596,7 +594,6 @@ function applyBad(id) {
 
   w.bad = (w.bad ?? 0) + 1;
   w.w = clamp((w.w ?? W_MIN) + BAD_STEP, W_MIN, W_MAX);
-
   saveWords(words);
 }
 
@@ -610,7 +607,6 @@ function applyOk(id) {
   if ((w.w ?? W_MIN) > W_MIN) {
     w.w = clamp((w.w ?? W_MIN) - OK_STEP, W_MIN, W_MAX);
   }
-
   saveWords(words);
 }
 
@@ -671,6 +667,10 @@ window.addEventListener("load", () => {
     resetPriorityMemory();
     renderDict();
   });
+
+  // Нейтральные стили на кнопки 1/2
+  document.getElementById("exportCsv")?.classList.add("btn-neutral");
+  document.getElementById("importCsv")?.classList.add("btn-neutral");
 
   document.getElementById("exportCsv")?.addEventListener("click", () => {
     exportWordsCsv();
