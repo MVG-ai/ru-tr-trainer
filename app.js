@@ -9,6 +9,9 @@ const W_MAX = 10;
 const BAD_STEP = 1.0;
 const OK_STEP = 0.25;
 
+// UI feedback
+const FEEDBACK_MS = 500;
+
 // Нормализация для сравнения (Дом = дом)
 function norm(s) {
   try {
@@ -26,7 +29,6 @@ function norm(s) {
 function ensureWord(raw) {
   if (!raw || typeof raw !== "object") return null;
 
-  // допускаем старые форматы: {ru,tr}, {r,t}, и т.п.
   const ru = (raw.ru ?? raw.Ru ?? raw.RU ?? raw.r ?? raw.R ?? "").toString();
   const tr = (raw.tr ?? raw.Tr ?? raw.TR ?? raw.t ?? raw.T ?? "").toString();
 
@@ -34,7 +36,6 @@ function ensureWord(raw) {
   const bad = Number.isFinite(+raw.bad) ? +raw.bad : 0;
   const ok = Number.isFinite(+raw.ok) ? +raw.ok : 0;
 
-  // hard может быть boolean / 0/1 / "1"
   const hard =
     raw.hard === true ||
     raw.hard === 1 ||
@@ -44,7 +45,6 @@ function ensureWord(raw) {
     raw.HARD === 1 ||
     raw.HARD === "1";
 
-  // id — стабильный, но если нет — создаём
   const id = (raw.id ?? raw._id ?? "").toString().trim() || cryptoId();
 
   const clean = {
@@ -57,13 +57,11 @@ function ensureWord(raw) {
     ok: Math.max(0, Math.floor(ok)),
   };
 
-  // пустые слова не пускаем
   if (!clean.ru || !clean.tr) return null;
   return clean;
 }
 
 function cryptoId() {
-  // Безопасно для iOS: если crypto.randomUUID есть — используем, иначе fallback
   if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
   return "id_" + Math.random().toString(16).slice(2) + "_" + Date.now().toString(16);
 }
@@ -84,8 +82,7 @@ function loadWords() {
       const w = ensureWord(item);
       if (w) out.push(w);
     }
-    // сохраняем обратно уже в нормализованном виде (мягкая миграция)
-    saveWords(out);
+    saveWords(out); // мягкая миграция
     return out;
   } catch {
     return [];
@@ -120,7 +117,6 @@ function addWord(ru, tr, hard) {
   });
   if (!newRec) return { ok: false, reason: "empty" };
 
-  // дедуп: case-insensitive ru+tr
   const keyNew = norm(newRec.ru) + "||" + norm(newRec.tr);
   for (const w of words) {
     const keyOld = norm(w.ru) + "||" + norm(w.tr);
@@ -158,7 +154,6 @@ function resetPriorityMemory() {
 // ===== CSV EXPORT (Ru,Tr,Hard) =====
 function csvEscape(v) {
   const s = (v ?? "").toString();
-  // если есть спецсимволы — оборачиваем в кавычки и удваиваем кавычки
   if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
   return s;
 }
@@ -166,9 +161,7 @@ function csvEscape(v) {
 function exportWordsCsv() {
   const words = loadWords();
 
-  // BOM — чтобы Excel/Numbers корректно читали UTF-8
   let csv = "\uFEFFRu,Tr,Hard\n";
-
   for (const w of words) {
     const hard = w.hard ? "1" : "0";
     csv += `${csvEscape(w.ru)},${csvEscape(w.tr)},${hard}\n`;
@@ -194,14 +187,12 @@ function exportWordsCsv() {
 }
 
 // ===== CSV IMPORT (Ru,Tr,Hard) =====
-// поддерживаем разделитель "," или ";" (часто в Excel по локали)
 function detectDelimiter(headerLine) {
   const commas = (headerLine.match(/,/g) || []).length;
   const semis = (headerLine.match(/;/g) || []).length;
   return semis > commas ? ";" : ",";
 }
 
-// парсер CSV с кавычками, возвращает массив строк (массив массивов)
 function parseCSV(text, delimiter) {
   const rows = [];
   let row = [];
@@ -213,36 +204,20 @@ function parseCSV(text, delimiter) {
     const next = text[i + 1];
 
     if (inQuotes) {
-      if (ch === '"' && next === '"') {
-        cur += '"';
-        i++;
-      } else if (ch === '"') {
-        inQuotes = false;
-      } else {
-        cur += ch;
-      }
+      if (ch === '"' && next === '"') { cur += '"'; i++; }
+      else if (ch === '"') inQuotes = false;
+      else cur += ch;
     } else {
-      if (ch === '"') {
-        inQuotes = true;
-      } else if (ch === delimiter) {
-        row.push(cur);
-        cur = "";
-      } else if (ch === "\n") {
-        row.push(cur);
-        rows.push(row);
-        row = [];
-        cur = "";
-      } else if (ch === "\r") {
-        // ignore
-      } else {
-        cur += ch;
-      }
+      if (ch === '"') inQuotes = true;
+      else if (ch === delimiter) { row.push(cur); cur = ""; }
+      else if (ch === "\n") { row.push(cur); rows.push(row); row = []; cur = ""; }
+      else if (ch === "\r") { /* ignore */ }
+      else cur += ch;
     }
   }
   row.push(cur);
   rows.push(row);
 
-  // убираем пустые хвосты
   return rows.filter(r => r.some(cell => (cell ?? "").toString().trim() !== ""));
 }
 
@@ -252,12 +227,12 @@ function normalizeHeader(h) {
 
 function hardToBool(v) {
   const s = (v ?? "").toString().trim();
-  if (!s) return false;           // пусто => 0
-  return s === "1";               // только 1 => true, остальное => false
+  if (!s) return false;
+  return s === "1";
 }
 
 function importWordsFromCsvText(csvText, mode /* "merge" | "replace" */) {
-  const text = (csvText ?? "").toString().replace(/^\uFEFF/, ""); // убираем BOM если есть
+  const text = (csvText ?? "").toString().replace(/^\uFEFF/, "");
   const firstLine = text.split(/\r?\n/).find(l => l.trim() !== "") ?? "";
   const delimiter = detectDelimiter(firstLine);
 
@@ -266,13 +241,11 @@ function importWordsFromCsvText(csvText, mode /* "merge" | "replace" */) {
 
   const header = rows[0].map(normalizeHeader);
 
-  const idxRu = header.findIndex(h => h === "ru" || h === "russian");
-  const idxTr = header.findIndex(h => h === "tr" || h === "turkish" || h === "türkçe");
+  const idxRu = header.findIndex(h => h === "ru");
+  const idxTr = header.findIndex(h => h === "tr");
   const idxHard = header.findIndex(h => h === "hard");
 
-  if (idxRu === -1 || idxTr === -1) {
-    return { ok: false, reason: "bad_header" };
-  }
+  if (idxRu === -1 || idxTr === -1) return { ok: false, reason: "bad_header" };
 
   const imported = [];
   for (let i = 1; i < rows.length; i++) {
@@ -283,7 +256,6 @@ function importWordsFromCsvText(csvText, mode /* "merge" | "replace" */) {
 
     const hard = idxHard === -1 ? false : hardToBool(r[idxHard]);
 
-    // импорт по ТЗ: w/bad/ok сбрасываем
     const w = ensureWord({
       id: cryptoId(),
       ru,
@@ -296,7 +268,7 @@ function importWordsFromCsvText(csvText, mode /* "merge" | "replace" */) {
     if (w) imported.push(w);
   }
 
-  // дедуп внутри импорта (на всякий)
+  // дедуп внутри импорта
   const seen = new Set();
   const importedUniq = [];
   for (const w of imported) {
@@ -311,7 +283,6 @@ function importWordsFromCsvText(csvText, mode /* "merge" | "replace" */) {
     return { ok: true, added: importedUniq.length, mode: "replace" };
   }
 
-  // merge (по умолчанию): добавляем только то, чего нет
   const current = loadWords();
   const currentKeys = new Set(current.map(w => norm(w.ru) + "||" + norm(w.tr)));
 
@@ -322,9 +293,7 @@ function importWordsFromCsvText(csvText, mode /* "merge" | "replace" */) {
     toAdd.push(w);
   }
 
-  const merged = [...toAdd, ...current]; // новые сверху
-  saveWords(merged);
-
+  saveWords([...toAdd, ...current]);
   return { ok: true, added: toAdd.length, mode: "merge" };
 }
 
@@ -343,7 +312,6 @@ async function handleImportCsvFile(file) {
     return;
   }
 
-  // Без лишней болтовни: даём выбор replace/merge стандартным confirm
   const replace = confirm(
     "Заменить текущую базу полностью?\n\nOK = заменить\nОтмена = добавить к текущей (без дублей)"
   );
@@ -361,8 +329,6 @@ async function handleImportCsvFile(file) {
   }
 
   renderDict();
-
-  // если пользователь сейчас в игре — пересобрать раунд, чтобы база/веса были актуальны
   const screenGame = document.getElementById("screenGame");
   if (screenGame && screenGame.style.display !== "none") startRound();
 
@@ -405,7 +371,6 @@ function renderDict() {
     listEl.appendChild(row);
   }
 
-  // делегирование
   listEl.querySelectorAll("button[data-act]").forEach(btn => {
     btn.addEventListener("click", () => {
       const act = btn.getAttribute("data-act");
@@ -428,13 +393,16 @@ function escapeHtml(s) {
     .replaceAll("'", "&#039;");
 }
 
-// ===== GAME =====
-let roundPairs = [];     // [{id, left, right}]
-let leftPool = [];       // [{id,text}]
-let rightPool = [];      // [{id,text}]
-let pickedLeft = null;   // {id,text}
-let pickedRight = null;  // {id,text}
-let wrongPair = null;    // {leftId,rightId} for red highlight
+// ===== GAME (плитки + подсветка 0.5s) =====
+let roundPairs = [];
+let leftPool = [];
+let rightPool = [];
+let pickedLeft = null;
+let pickedRight = null;
+
+// transient feedback
+let feedback = null; // { type: "ok"|"bad", leftId, rightId }
+let inputLocked = false;
 
 function effectiveWeight(w) {
   const base = Number.isFinite(+w.w) ? +w.w : W_MIN;
@@ -442,7 +410,6 @@ function effectiveWeight(w) {
 }
 
 function weightedSampleWithoutReplacement(items, k) {
-  // простой и стабильный: повторяем k раз "roulette" по текущим весам, исключая выбранное
   const pool = items.slice();
   const picked = [];
 
@@ -450,7 +417,6 @@ function weightedSampleWithoutReplacement(items, k) {
     let total = 0;
     for (const x of pool) total += effectiveWeight(x);
 
-    // если вдруг total=0
     if (total <= 0) {
       picked.push(pool.shift());
       continue;
@@ -486,7 +452,8 @@ function startRound() {
 
   pickedLeft = null;
   pickedRight = null;
-  wrongPair = null;
+  feedback = null;
+  inputLocked = false;
 
   if (words.length < 2) {
     gameArea.innerHTML = `<div style="opacity:.7;">Нужно хотя бы 2 слова в базе.</div>`;
@@ -511,78 +478,121 @@ function startRound() {
   renderGame();
 }
 
+function tileStyle(state) {
+  // state: "normal" | "active" | "ok" | "bad"
+  const base =
+    "user-select:none; -webkit-user-select:none; " +
+    "padding:12px 12px; border-radius:12px; " +
+    "border:1px solid rgba(0,0,0,0.12); " +
+    "background:#ffffff; " +
+    "margin:10px 0; " +
+    "box-shadow:0 1px 2px rgba(0,0,0,0.06); " +
+    "cursor:pointer; " +
+    "transition:background 120ms ease, transform 80ms ease, border-color 120ms ease; " +
+    "font-size:18px; line-height:1.2;";
+
+  if (state === "active") {
+    return base + "border-color: rgba(21,101,192,0.8); transform: scale(0.99);";
+  }
+  if (state === "ok") {
+    return base + "background: rgba(46,125,50,0.18); border-color: rgba(46,125,50,0.55);";
+  }
+  if (state === "bad") {
+    return base + "background: rgba(229,57,53,0.18); border-color: rgba(229,57,53,0.55);";
+  }
+  return base;
+}
+
 function renderGame() {
   const gameArea = document.getElementById("gameArea");
   if (!gameArea) return;
 
+  const colsStyle = "display:flex; gap:14px; align-items:flex-start;";
+  const colStyle = "flex:1;";
+
   const leftHtml = leftPool.map(x => {
-    const active = pickedLeft?.id === x.id ? " active" : "";
-    const wrong = wrongPair && wrongPair.leftId === x.id ? " wrong" : "";
-    return `<div class="card${active}${wrong}" data-side="L" data-id="${x.id}">${escapeHtml(x.text)}</div>`;
+    let state = "normal";
+    if (pickedLeft?.id === x.id) state = "active";
+    if (feedback && feedback.leftId === x.id) state = feedback.type === "ok" ? "ok" : "bad";
+    return `<div style="${tileStyle(state)}" data-side="L" data-id="${x.id}">${escapeHtml(x.text)}</div>`;
   }).join("");
 
   const rightHtml = rightPool.map(x => {
-    const active = pickedRight?.id === x.id ? " active" : "";
-    const wrong = wrongPair && wrongPair.rightId === x.id ? " wrong" : "";
-    return `<div class="card${active}${wrong}" data-side="R" data-id="${x.id}">${escapeHtml(x.text)}</div>`;
+    let state = "normal";
+    if (pickedRight?.id === x.id) state = "active";
+    if (feedback && feedback.rightId === x.id) state = feedback.type === "ok" ? "ok" : "bad";
+    return `<div style="${tileStyle(state)}" data-side="R" data-id="${x.id}">${escapeHtml(x.text)}</div>`;
   }).join("");
 
   gameArea.innerHTML = `
-    <div class="cols">
-      <div class="col">${leftHtml}</div>
-      <div class="col">${rightHtml}</div>
+    <div style="${colsStyle}">
+      <div style="${colStyle}">${leftHtml}</div>
+      <div style="${colStyle}">${rightHtml}</div>
     </div>
   `;
 
-  gameArea.querySelectorAll(".card").forEach(el => {
+  gameArea.querySelectorAll("[data-side][data-id]").forEach(el => {
     el.addEventListener("click", () => onPick(el));
   });
 }
 
 function onPick(el) {
+  if (inputLocked) return;
+
   const side = el.getAttribute("data-side");
   const id = el.getAttribute("data-id");
   if (!id) return;
 
-  wrongPair = null;
+  // если в данный момент показываем feedback — игнор
+  if (feedback) return;
 
   if (side === "L") pickedLeft = leftPool.find(x => x.id === id) || null;
   if (side === "R") pickedRight = rightPool.find(x => x.id === id) || null;
 
-  // если выбраны обе — проверяем
+  renderGame();
+
   if (pickedLeft && pickedRight) {
+    inputLocked = true;
+
     if (pickedLeft.id === pickedRight.id) {
-      // правильно: убрать пару из раунда, обновить статистику
+      // правильно -> зелёное 0.5с -> удалить пару
       applyOk(pickedLeft.id);
 
-      leftPool = leftPool.filter(x => x.id !== pickedLeft.id);
-      rightPool = rightPool.filter(x => x.id !== pickedRight.id);
-
-      pickedLeft = null;
-      pickedRight = null;
-
+      feedback = { type: "ok", leftId: pickedLeft.id, rightId: pickedRight.id };
       renderGame();
 
-      // если раунд закончился — авто следующий
-      if (leftPool.length === 0) {
-        startRound();
-      }
-      return;
+      const pairId = pickedLeft.id;
+      setTimeout(() => {
+        leftPool = leftPool.filter(x => x.id !== pairId);
+        rightPool = rightPool.filter(x => x.id !== pairId);
+
+        pickedLeft = null;
+        pickedRight = null;
+        feedback = null;
+        inputLocked = false;
+
+        renderGame();
+
+        if (leftPool.length === 0) startRound();
+      }, FEEDBACK_MS);
+
     } else {
-      // ошибка: подсветить, обновить bad обоим (чтобы не поощрять угадайку)
+      // ошибка -> красное 0.5с -> снять выбор
       applyBad(pickedLeft.id);
       applyBad(pickedRight.id);
 
-      wrongPair = { leftId: pickedLeft.id, rightId: pickedRight.id };
-      pickedLeft = null;
-      pickedRight = null;
-
+      feedback = { type: "bad", leftId: pickedLeft.id, rightId: pickedRight.id };
       renderGame();
-      return;
+
+      setTimeout(() => {
+        pickedLeft = null;
+        pickedRight = null;
+        feedback = null;
+        inputLocked = false;
+        renderGame();
+      }, FEEDBACK_MS);
     }
   }
-
-  renderGame();
 }
 
 function applyBad(id) {
@@ -638,23 +648,19 @@ function showScreen(name) {
 
 // ===== init =====
 window.addEventListener("load", () => {
-  // direction init
   const dirSel = document.getElementById("direction");
   if (dirSel) {
     dirSel.value = getDirection();
     dirSel.addEventListener("change", () => {
       setDirection(dirSel.value);
-      // если мы в игре — пересобрать раунд
       const screenGame = document.getElementById("screenGame");
       if (screenGame && screenGame.style.display !== "none") startRound();
     });
   }
 
-  // tabs
   document.getElementById("tabDict")?.addEventListener("click", () => showScreen("dict"));
   document.getElementById("tabGame")?.addEventListener("click", () => showScreen("game"));
 
-  // add word
   document.getElementById("add")?.addEventListener("click", () => {
     const ru = document.getElementById("ru")?.value ?? "";
     const tr = document.getElementById("tr")?.value ?? "";
@@ -669,13 +675,11 @@ window.addEventListener("load", () => {
     renderDict();
   });
 
-  // reset memory
   document.getElementById("reset")?.addEventListener("click", () => {
     resetPriorityMemory();
     renderDict();
   });
 
-  // export CSV
   document.getElementById("exportCsv")?.addEventListener("click", () => {
     exportWordsCsv();
   });
@@ -683,29 +687,23 @@ window.addEventListener("load", () => {
   // import CSV
   const importBtn = document.getElementById("importCsv");
   const importInput = document.getElementById("importCsvInput");
-
   if (importBtn && importInput) {
     importBtn.addEventListener("click", () => {
-      // сброс value, чтобы можно было выбрать тот же файл повторно
       importInput.value = "";
       importInput.click();
     });
-
     importInput.addEventListener("change", async () => {
       const file = importInput.files && importInput.files[0];
       if (!file) return;
       await handleImportCsvFile(file);
-      // на всякий — очистить выбор
       importInput.value = "";
     });
   }
 
-  // next round
   document.getElementById("nextRound")?.addEventListener("click", () => {
     startRound();
   });
 
-  // initial render
   renderDict();
   showScreen("dict");
 });
