@@ -268,7 +268,6 @@ function importWordsFromCsvText(csvText, mode /* "merge" | "replace" */) {
     if (w) imported.push(w);
   }
 
-  // дедуп внутри импорта
   const seen = new Set();
   const importedUniq = [];
   for (const w of imported) {
@@ -356,11 +355,11 @@ function renderDict() {
 
     const hardMark = w.hard ? "✅" : "⬜️";
 
+    // ТЕХНИЧЕСКУЮ СТРОКУ (w/bad/ok) УБРАЛИ
     row.innerHTML = `
       <div style="display:flex; gap:10px; align-items:center; justify-content:space-between;">
         <div style="flex:1;">
           <div><b>${escapeHtml(w.ru)}</b> — ${escapeHtml(w.tr)}</div>
-          <div style="opacity:.6; font-size:12px;">w=${w.w.toFixed(2)} | bad=${w.bad} | ok=${w.ok}</div>
         </div>
 
         <button data-act="hard" data-id="${w.id}" title="hard">${hardMark}</button>
@@ -400,7 +399,6 @@ let rightPool = [];
 let pickedLeft = null;
 let pickedRight = null;
 
-// transient feedback
 let feedback = null; // { type: "ok"|"bad", leftId, rightId }
 let inputLocked = false;
 
@@ -479,7 +477,6 @@ function startRound() {
 }
 
 function tileStyle(state) {
-  // state: "normal" | "active" | "ok" | "bad"
   const base =
     "user-select:none; -webkit-user-select:none; " +
     "padding:12px 12px; border-radius:12px; " +
@@ -543,7 +540,6 @@ function onPick(el) {
   const id = el.getAttribute("data-id");
   if (!id) return;
 
-  // если в данный момент показываем feedback — игнор
   if (feedback) return;
 
   if (side === "L") pickedLeft = leftPool.find(x => x.id === id) || null;
@@ -555,7 +551,6 @@ function onPick(el) {
     inputLocked = true;
 
     if (pickedLeft.id === pickedRight.id) {
-      // правильно -> зелёное 0.5с -> удалить пару
       applyOk(pickedLeft.id);
 
       feedback = { type: "ok", leftId: pickedLeft.id, rightId: pickedRight.id };
@@ -577,7 +572,6 @@ function onPick(el) {
       }, FEEDBACK_MS);
 
     } else {
-      // ошибка -> красное 0.5с -> снять выбор
       applyBad(pickedLeft.id);
       applyBad(pickedRight.id);
 
@@ -604,7 +598,6 @@ function applyBad(id) {
   w.w = clamp((w.w ?? W_MIN) + BAD_STEP, W_MIN, W_MAX);
 
   saveWords(words);
-  renderDict();
 }
 
 function applyOk(id) {
@@ -619,7 +612,6 @@ function applyOk(id) {
   }
 
   saveWords(words);
-  renderDict();
 }
 
 // ===== Tabs =====
@@ -684,7 +676,6 @@ window.addEventListener("load", () => {
     exportWordsCsv();
   });
 
-  // import CSV
   const importBtn = document.getElementById("importCsv");
   const importInput = document.getElementById("importCsvInput");
   if (importBtn && importInput) {
