@@ -355,12 +355,13 @@ function renderDict() {
 
     const hardText = w.hard ? "сложное ✓" : "отметить как сложное";
 
+    // ВАЖНО: без внутреннего flex-контейнера — он ломал PWA iOS
     row.innerHTML = `
-      <div style="display:flex; gap:10px; align-items:center; justify-content:space-between; width:100%;">
-        <div style="flex:1; min-width:0;">
-          <div><b>${escapeHtml(w.ru)}</b> — ${escapeHtml(w.tr)}</div>
-        </div>
+      <div class="row-main">
+        <div><b>${escapeHtml(w.ru)}</b> — ${escapeHtml(w.tr)}</div>
+      </div>
 
+      <div class="row-actions">
         <button class="btn-small" data-act="hard" data-id="${w.id}">${hardText}</button>
         <button class="btn-small" data-act="del" data-id="${w.id}">удалить</button>
       </div>
