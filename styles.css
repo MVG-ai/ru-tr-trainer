@@ -26,7 +26,7 @@ button {
     color: white;
 }
 
-/* ===== NEW: нейтральные кнопки ===== */
+/* ===== NEW: нейтральные кнопки (экспорт/импорт) ===== */
 .btn-neutral{
   background: #eef2f7 !important;
   color: #1f2937 !important;
@@ -45,13 +45,7 @@ button {
   background: #eef2f7;
   color: #1f2937;
   font-size: 14px;
-  margin: 0; /* чтобы не раздувало строку */
-}
-
-/* чтобы кнопки в строке словаря выглядели одинаково по ширине */
-#list .btn-small{
-  min-width: 140px;
-  text-align: center;
+  margin: 0;
 }
 
 /* ===== 기존 ===== */
@@ -84,36 +78,46 @@ input {
 
 .form { margin-bottom: 12px; }
 
+/* ===== Строка словаря ===== */
 .row {
   display: flex;
   justify-content: space-between;
-  gap: 10px;
-  padding: 10px;
+  gap: 12px;
+  padding: 12px;
   background: white;
   border: 1px solid #ddd;
-  border-radius: 10px;
-  margin: 8px 0;
+  border-radius: 12px;
+  margin: 10px 0;
 }
 
-.row-text { font-weight: 600; }
-
-/* FIX: строка словаря не должна разъезжаться на мобиле */
+/* FIX: строка словаря не должна разъезжаться на iOS PWA */
 #list .row{
-  display: flex;
-  align-items: center;
-  gap: 10px;
+  align-items: stretch;   /* важно: кнопки не “влезают” в текст */
   flex-wrap: nowrap;
 }
 
-#list .row-text{
+/* левая часть (текст) */
+#list .row-main{
   flex: 1 1 auto;
   min-width: 0;
   word-break: break-word;
 }
 
-#list .btn-small{
+/* правая часть (кнопки) */
+#list .row-actions{
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   flex: 0 0 auto;
+  align-items: stretch;
+}
+
+/* фиксируем ширину кнопок справа, чтобы не прыгали */
+#list .row-actions .btn-small{
+  width: 170px;     /* можешь потом подкрутить 150–190 */
   white-space: nowrap;
+  margin: 0;
+  text-align: center;
 }
 
 /* FIX: чекбокс "плохо запоминается" */
