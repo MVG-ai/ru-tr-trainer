@@ -161,3 +161,28 @@ input {
   padding:8px;
   border-radius:8px;
 }
+
+/* PWA iOS FIX: в строке словаря текст слева, кнопки отдельной колонкой справа */
+#list .row{
+  align-items: stretch;
+}
+
+#list .row-actions{
+  display:flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 0 0 auto;
+  align-items: stretch;
+}
+
+/* чтобы кнопки были одинаковой ширины и не залезали в текст */
+#list .row-actions .btn-small{
+  width: 170px;      /* можно 160-190 подобрать */
+  margin: 0;
+}
+
+/* текстовая часть занимает всё оставшееся */
+#list .row-main{
+  flex: 1 1 auto;
+  min-width: 0;
+}
